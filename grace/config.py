@@ -93,6 +93,15 @@ class ConfidenceConfig(BaseModel):
     weights: ConfidenceWeights = Field(default_factory=ConfidenceWeights)
     thresholds: ConfidenceThresholds = Field(default_factory=ConfidenceThresholds)
 
+    # S1: 根拠妥当性（groundedness）を最終 confidence の主成分にする設定
+    groundedness_enabled: bool = True   # 最終回答の支持率検証を有効化
+    groundedness_weight: float = 0.6    # 支持率（主成分）の重み
+    self_eval_weight: float = 0.25      # 自己評価（従）の重み
+    coverage_weight: float = 0.15       # 網羅度（従）の重み
+    search_aux_weight: float = 0.2      # 検索ベース集約値（補助）の重み
+    # S1: confidence 較正（温度スケーリング）パラメータの保存先
+    calibration_path: str = "config/calibration.json"
+
 
 class InterventionConfig(BaseModel):
     """介入設定"""
