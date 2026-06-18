@@ -1,0 +1,296 @@
+{
+  "coverage_rate": 0.1,
+  "covered_chunks": 1,
+  "total_chunks": 10,
+  "uncovered_chunks": [
+    {
+      "chunk_id": "cc_news_2per_chunk_0",
+      "similarity": 0.4327256508526834,
+      "gap": 0.26727434914731657,
+      "text_preview": "Awesome line out sees Smith score in his 150th Cooper's vision sets up Reds' length of the field try..."
+    },
+    {
+      "chunk_id": "cc_news_2per_chunk_2",
+      "similarity": 0.41876767825092803,
+      "gap": 0.2812323217490719,
+      "text_preview": "Want more videos? Download the Roar TV app:..."
+    },
+    {
+      "chunk_id": "cc_news_2per_chunk_3",
+      "similarity": 0.5149022092557659,
+      "gap": 0.18509779074423405,
+      "text_preview": "Former Wallabies winger Drew Mitchell has announced he will retire at the end of the French Top 14 season. Mitchell used Twitter on Monday to say he'll hang up the boots next month when the 33-year-ol..."
+    },
+    {
+      "chunk_id": "cc_news_2per_chunk_4",
+      "similarity": 0.5029601170018262,
+      "gap": 0.19703988299817377,
+      "text_preview": "April 1, 2018 An Historic Donation Evenstads pledge $6 million to expand Linfield wine program In March, Domaine Serene Winery founders Grace and Ken Evenstad pledged $6 million to Linfield College, t..."
+    },
+    {
+      "chunk_id": "cc_news_2per_chunk_5",
+      "similarity": 0.49466997943908814,
+      "gap": 0.20533002056091182,
+      "text_preview": "Grace and Ken Evenstad founded Domaine Serene in the Dundee Hills of Oregon in 1989. For the past 29 years, Domaine Serene, under the guidance of the Evenstads, has been focused on excellence in a per..."
+    },
+    {
+      "chunk_id": "cc_news_2per_chunk_6",
+      "similarity": 0.4378176489045906,
+      "gap": 0.2621823510954094,
+      "text_preview": "ST. LOUIS, MO (KTVI)-A new, innovative line of healthy drinks being sold at Whole Foods Market and Dierbergs is produced right here in St. Louis! FOX 2's Katie Kormann is live in downtown at Karuna wi..."
+    },
+    {
+      "chunk_id": "cc_news_2per_chunk_7",
+      "similarity": 0.46018388673348715,
+      "gap": 0.2398161132665128,
+      "text_preview": "NFL players Chris and Kyle Long have unique perspectives on the white nationalist rally in Charlottesville, Va. Chris, a defensive end for the Philadelphia Eagles, and brother Kyle, an offensive linem..."
+    },
+    {
+      "chunk_id": "cc_news_2per_chunk_8",
+      "similarity": 0.5269831297715813,
+      "gap": 0.1730168702284186,
+      "text_preview": "Thumbnail photo via Benny Sieu/USA TODAY Sports Images..."
+    },
+    {
+      "chunk_id": "cc_news_2per_chunk_9",
+      "similarity": 0.4911654944555402,
+      "gap": 0.20883450554445976,
+      "text_preview": "The Turnbull Government has been stunned by Donald Trump's decision to withdraw Admiral Harry Harris as his Ambassador to Australia. The head of US Pacific Command was due to take up the post in Canbe..."
+    }
+  ],
+  "max_similarities": [
+    0.4327256508526834,
+    0.811505286917713,
+    0.41876767825092803,
+    0.5149022092557659,
+    0.5029601170018262,
+    0.49466997943908814,
+    0.4378176489045906,
+    0.46018388673348715,
+    0.5269831297715813,
+    0.4911654944555402
+  ],
+  "threshold": 0.7,
+  "multi_threshold": {
+    "strict": {
+      "threshold": 0.8,
+      "covered_chunks": 1,
+      "coverage_rate": 0.1,
+      "uncovered_count": 9,
+      "uncovered_chunks": [
+        {
+          "chunk_id": "cc_news_2per_chunk_0",
+          "similarity": 0.4327256508526834,
+          "gap": 0.36727434914731666
+        },
+        {
+          "chunk_id": "cc_news_2per_chunk_2",
+          "similarity": 0.41876767825092803,
+          "gap": 0.381232321749072
+        },
+        {
+          "chunk_id": "cc_news_2per_chunk_3",
+          "similarity": 0.5149022092557659,
+          "gap": 0.28509779074423414
+        },
+        {
+          "chunk_id": "cc_news_2per_chunk_4",
+          "similarity": 0.5029601170018262,
+          "gap": 0.29703988299817385
+        },
+        {
+          "chunk_id": "cc_news_2per_chunk_5",
+          "similarity": 0.49466997943908814,
+          "gap": 0.3053300205609119
+        },
+        {
+          "chunk_id": "cc_news_2per_chunk_6",
+          "similarity": 0.4378176489045906,
+          "gap": 0.36218235109540947
+        },
+        {
+          "chunk_id": "cc_news_2per_chunk_7",
+          "similarity": 0.46018388673348715,
+          "gap": 0.3398161132665129
+        },
+        {
+          "chunk_id": "cc_news_2per_chunk_8",
+          "similarity": 0.5269831297715813,
+          "gap": 0.2730168702284187
+        },
+        {
+          "chunk_id": "cc_news_2per_chunk_9",
+          "similarity": 0.4911654944555402,
+          "gap": 0.30883450554445985
+        }
+      ]
+    },
+    "standard": {
+      "threshold": 0.7,
+      "covered_chunks": 1,
+      "coverage_rate": 0.1,
+      "uncovered_count": 9,
+      "uncovered_chunks": [
+        {
+          "chunk_id": "cc_news_2per_chunk_0",
+          "similarity": 0.4327256508526834,
+          "gap": 0.26727434914731657
+        },
+        {
+          "chunk_id": "cc_news_2per_chunk_2",
+          "similarity": 0.41876767825092803,
+          "gap": 0.2812323217490719
+        },
+        {
+          "chunk_id": "cc_news_2per_chunk_3",
+          "similarity": 0.5149022092557659,
+          "gap": 0.18509779074423405
+        },
+        {
+          "chunk_id": "cc_news_2per_chunk_4",
+          "similarity": 0.5029601170018262,
+          "gap": 0.19703988299817377
+        },
+        {
+          "chunk_id": "cc_news_2per_chunk_5",
+          "similarity": 0.49466997943908814,
+          "gap": 0.20533002056091182
+        },
+        {
+          "chunk_id": "cc_news_2per_chunk_6",
+          "similarity": 0.4378176489045906,
+          "gap": 0.2621823510954094
+        },
+        {
+          "chunk_id": "cc_news_2per_chunk_7",
+          "similarity": 0.46018388673348715,
+          "gap": 0.2398161132665128
+        },
+        {
+          "chunk_id": "cc_news_2per_chunk_8",
+          "similarity": 0.5269831297715813,
+          "gap": 0.1730168702284186
+        },
+        {
+          "chunk_id": "cc_news_2per_chunk_9",
+          "similarity": 0.4911654944555402,
+          "gap": 0.20883450554445976
+        }
+      ]
+    },
+    "lenient": {
+      "threshold": 0.6,
+      "covered_chunks": 1,
+      "coverage_rate": 0.1,
+      "uncovered_count": 9,
+      "uncovered_chunks": [
+        {
+          "chunk_id": "cc_news_2per_chunk_0",
+          "similarity": 0.4327256508526834,
+          "gap": 0.1672743491473166
+        },
+        {
+          "chunk_id": "cc_news_2per_chunk_2",
+          "similarity": 0.41876767825092803,
+          "gap": 0.18123232174907195
+        },
+        {
+          "chunk_id": "cc_news_2per_chunk_3",
+          "similarity": 0.5149022092557659,
+          "gap": 0.08509779074423407
+        },
+        {
+          "chunk_id": "cc_news_2per_chunk_4",
+          "similarity": 0.5029601170018262,
+          "gap": 0.09703988299817379
+        },
+        {
+          "chunk_id": "cc_news_2per_chunk_5",
+          "similarity": 0.49466997943908814,
+          "gap": 0.10533002056091184
+        },
+        {
+          "chunk_id": "cc_news_2per_chunk_6",
+          "similarity": 0.4378176489045906,
+          "gap": 0.1621823510954094
+        },
+        {
+          "chunk_id": "cc_news_2per_chunk_7",
+          "similarity": 0.46018388673348715,
+          "gap": 0.13981611326651283
+        },
+        {
+          "chunk_id": "cc_news_2per_chunk_8",
+          "similarity": 0.5269831297715813,
+          "gap": 0.07301687022841863
+        },
+        {
+          "chunk_id": "cc_news_2per_chunk_9",
+          "similarity": 0.4911654944555402,
+          "gap": 0.10883450554445978
+        }
+      ]
+    }
+  },
+  "chunk_analysis": {
+    "by_length": {
+      "short": {
+        "count": 6,
+        "covered": 1,
+        "avg_similarity": 0.5198274815255061,
+        "coverage_rate": 0.16666666666666666
+      },
+      "long": {
+        "count": 3,
+        "covered": 0,
+        "avg_similarity": 0.4926820709970264,
+        "coverage_rate": 0.0
+      },
+      "medium": {
+        "count": 1,
+        "covered": 0,
+        "avg_similarity": 0.49466997943908814,
+        "coverage_rate": 0.0
+      }
+    },
+    "by_position": {
+      "beginning": {
+        "count": 4,
+        "covered": 1,
+        "avg_similarity": 0.5444752063192726,
+        "coverage_rate": 0.25
+      },
+      "middle": {
+        "count": 3,
+        "covered": 0,
+        "avg_similarity": 0.478482581781835,
+        "coverage_rate": 0.0
+      },
+      "end": {
+        "count": 3,
+        "covered": 0,
+        "avg_similarity": 0.49277750365353623,
+        "coverage_rate": 0.0
+      }
+    },
+    "summary": {
+      "total_chunks": 10,
+      "total_qa_pairs": 21,
+      "threshold_used": 0.7,
+      "insights": [
+        "shortチャンクのカバレージが低い（16.7%）",
+        "longチャンクのカバレージが低い（0.0%）",
+        "mediumチャンクのカバレージが低い（0.0%）",
+        "文書beginning部分のカバレージが低い（25.0%）",
+        "文書middle部分のカバレージが低い（0.0%）",
+        "文書end部分のカバレージが低い（0.0%）"
+      ]
+    }
+  },
+  "dataset_type": "cc_news_2per_chunks",
+  "optimal_thresholds": {
+    "strict": 0.8,
+    "standard": 0.7,
+    "lenient": 0.6
+  }
+}

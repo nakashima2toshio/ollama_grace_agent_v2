@@ -1,0 +1,125 @@
+# ============================================================================
+# CI + 自動マージ ワークフロー
+# ----------------------------------------------------------------------------
+# 方針（anthropic_grace_agent から移植 / 2026-06-13 lint負債解消によりruffをblocking化）:
+#  - CI ゲート（必須）: `ruff check .`（全リポジトリ・blocking）+ `python -m compileall`。
+#  - 自動マージ: CI が緑になった `claude/*` ブランチの PR を master へ自動マージ。
+#                ドラフトでも Ready 化して merge する（claude/* に限定）。
+#                `hold` ラベルが付いた PR は自動マージしない（保留用エスケープ）。
+#  - master への直接 push は引き続き許可（ブランチ保護は掛けない）。push 時は
+#    ruff/compileall のみ実行し、マージ系ジョブは動かない。
+# ============================================================================
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+    branches: [master]
+  push:
+    branches: [master]
+
+# 自動マージ（gh pr merge / gh pr ready）に必要な書き込み権限
+permissions:
+  contents: write
+  pull-requests: write
+
+# 同一参照に対する多重実行を抑制
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # --------------------------------------------------------------------------
+  # 必須チェック: ruff（全リポジトリ・blocking） + compileall（構文ゲート）
+  # --------------------------------------------------------------------------
+  build:
+    name: lint + compile
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install ruff
+        run: pip install ruff==0.12.11
+
+      # ハードゲート: 全リポジトリの lint（pyproject.toml の [tool.ruff] 設定に従う）
+      - name: Ruff lint (whole repo, blocking)
+        run: ruff check .
+
+      # ハードゲート: 全 .py の構文/バイトコンパイル（外部サービス・APIキー不要）
+      - name: Compile all (syntax gate)
+        run: python -m compileall -q -x '\.venv|/old_code/|/\.git/' .
+
+  # --------------------------------------------------------------------------
+  # ユニットテスト（pytest）: モックベースのユニットテストを実行する。
+  #   - 実 Ollama/Qdrant/Celery 依存の統合テストは RUN_OLLAMA_INTEGRATION 未設定の
+  #     ため自動的に skip される（各テストの skipif で制御）。
+  #   - 現状は advisory（auto-merge の needs に含めない）。フル依存＋サービス
+  #     コンテナを備えたランナーで安定して緑になったら build と同様に blocking 化し、
+  #     auto-merge の needs に加えること。
+  # --------------------------------------------------------------------------
+  unit-tests:
+    name: pytest (unit, integration skipped)
+    runs-on: ubuntu-latest
+    continue-on-error: true  # 安定するまでは advisory（マージをブロックしない）
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # テスト実行に必要な依存。重い完全再現が必要なら -r requirements.txt に切替。
+          pip install pytest pytest-asyncio pydantic pandas numpy \
+            qdrant-client tiktoken scikit-learn pyyaml
+
+      - name: Run unit tests (integration auto-skipped)
+        env:
+          # RUN_OLLAMA_INTEGRATION を設定しない → 実機依存テストは skip
+          PYTHONPATH: .
+        run: pytest tests/ -q -rs
+
+  # --------------------------------------------------------------------------
+  # 自動マージ: claude/* ブランチの PR を CI 成功後に master へマージ
+  # --------------------------------------------------------------------------
+  auto-merge:
+    name: auto-merge (claude/*)
+    needs: build
+    if: >-
+      github.event_name == 'pull_request' &&
+      startsWith(github.head_ref, 'claude/') &&
+      !contains(github.event.pull_request.labels.*.name, 'hold')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Mark ready & merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          # ドラフトなら Ready 化（既に Ready ならエラーになるので無視）
+          gh pr ready "$PR" --repo "$REPO" || true
+          # CI（build）成功後にマージ。マージコミット方式。
+          # リポジトリがマージコミット禁止の場合は --squash / --rebase に変更すること。
+          gh pr merge "$PR" --repo "$REPO" --merge
+
+# ============================================================================
+# 移植元: anthropic_grace_agent/.github/workflows/ci.yml（2026-06-13）。
+# 後続候補:
+#  - unit-tests を安定後に blocking 化し auto-merge の needs に追加。
+#  - Ollama/Qdrant/Redis を services コンテナ＋Secrets で起動し、
+#    RUN_OLLAMA_INTEGRATION=1 の統合テストを別ジョブ（workflow_dispatch 推奨）として追加。
+# ============================================================================
