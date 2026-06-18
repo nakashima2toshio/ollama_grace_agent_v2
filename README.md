@@ -38,7 +38,7 @@
 
 ---
 
-## （自律型Agent）agent_rag.py
+## （自律型Agent）grace_chat_page.py
 
 画面： agent_rag.py
 ![img.png](assets/lp_gamen_img.png)
@@ -160,6 +160,16 @@ flowchart TB
     StateManager --> ExecView
     Executor --> ResultView
     Executor --> ChatHistory
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class ChatInput,ChatHistory,PlanView,ExecView,ResultView,Planner,ComplexityEstimator,PlanGeneration,Executor,StateManager,ConfCalc,IntHandler,ReplanOrch,ToolRegistry,RAGSearch,Reasoning,AskUser,CollectionCache,KeywordExtractor,Qdrant default
+style UI fill:#1a1a1a,stroke:#fff,color:#fff
+style Planner_Layer fill:#1a1a1a,stroke:#fff,color:#fff
+style Executor_Layer fill:#1a1a1a,stroke:#fff,color:#fff
+style Tools fill:#1a1a1a,stroke:#fff,color:#fff
+style Cache fill:#1a1a1a,stroke:#fff,color:#fff
+style NLP fill:#1a1a1a,stroke:#fff,color:#fff
+style DB fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### Planner / Executor 2フェーズ処理フロー
@@ -177,6 +187,9 @@ flowchart LR
     I -->|ユーザー確認| H["HITL<br/>(Human-in-the-Loop)"]
     H --> E
     A --> D["📊 実行結果サマリ"]
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class Q,P,E,C,A,I,R,H,D default
 ```
 
 ---
@@ -217,6 +230,12 @@ flowchart TB
     end
 
     Sidebar -.-> Main
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class S1,S2,S3,S4,S5,S6,S7,M1,M2,M3,M4,M5,M6,M7,M8,M9,M10 default
+style Browser fill:#1a1a1a,stroke:#fff,color:#fff
+style Sidebar fill:#1a1a1a,stroke:#fff,color:#fff
+style Main fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 1.2 コンポーネント配置図
@@ -272,6 +291,18 @@ flowchart TB
 
     M1 --> M2 --> Expander_Data --> M3 --> M4 --> ChatArea --> ResponseArea --> M5
     S1 --> S2 --> S3 --> S4 --> S5 --> S6 --> S7
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class M1,M2,E1,E2,E3,M3,M4,C1,P1,P2,P3,P4,X1,X2,X3,R1,R2,R3,R4,RA1,M5,S1,S2,S3,S4,S5,S6,S7 default
+style Page fill:#1a1a1a,stroke:#fff,color:#fff
+style MainArea fill:#1a1a1a,stroke:#fff,color:#fff
+style Expander_Data fill:#1a1a1a,stroke:#fff,color:#fff
+style ChatArea fill:#1a1a1a,stroke:#fff,color:#fff
+style ResponseArea fill:#1a1a1a,stroke:#fff,color:#fff
+style Expander_Plan fill:#1a1a1a,stroke:#fff,color:#fff
+style Expander_Exec fill:#1a1a1a,stroke:#fff,color:#fff
+style Expander_Result fill:#1a1a1a,stroke:#fff,color:#fff
+style SidebarArea fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 1.3 応答エリア内部構造
@@ -303,6 +334,13 @@ flowchart TB
     end
 
     Plan --> Exec --> Result --> Final
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class P1,P2,P3,P4,P5,X1,X2,X3,X4,R1,R2,Final default
+style AssistantMessage fill:#1a1a1a,stroke:#fff,color:#fff
+style Plan fill:#1a1a1a,stroke:#fff,color:#fff
+style Exec fill:#1a1a1a,stroke:#fff,color:#fff
+style Result fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ---
@@ -542,6 +580,13 @@ flowchart TB
     Reset --> A
 
     G -->|No| E
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,B1,B2,C,D,D1,D2,D3,D4,D5,E,F,F1,F2,F3,F4,F5,F6,G,H,H1,H2,H3,H4,H5 default
+style Init fill:#1a1a1a,stroke:#fff,color:#fff
+style Reinit fill:#1a1a1a,stroke:#fff,color:#fff
+style Chat fill:#1a1a1a,stroke:#fff,color:#fff
+style Reset fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 3.3 初期化・リセット条件
@@ -639,11 +684,23 @@ flowchart TB
     G --> H{"継続して質問?"}
     H -->|Yes| D
     H -->|No| End(["終了 or 会話クリア"])
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class Start,A,B,B1,B2,C,D,E1,E1a,E1b,E1c,E2,E2a,E2b,E2c,E2d,E2e,F,G,H,End default
+style Settings fill:#1a1a1a,stroke:#fff,color:#fff
+style PlanPhase fill:#1a1a1a,stroke:#fff,color:#fff
+style ExecPhase fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 4.2 操作シーケンス図
 
 ```mermaid
+%%{ init: { "theme": "base", "themeVariables": {
+  "background": "#000000", "mainBkg": "#000000",
+  "textColor": "#ffffff", "lineColor": "#ffffff",
+  "actorBkg": "#000000", "actorTextColor": "#ffffff",
+  "actorLineColor": "#ffffff", "noteBkg": "#1a1a1a",
+  "noteTextColor": "#ffffff" } } }%%
 sequenceDiagram
     participant User as User
     participant UI as UI (Streamlit)
@@ -1103,6 +1160,17 @@ flowchart TB
 
     ConfMod --> Gemini
     ReplanMod --> PlannerMod
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class Page,Init,Schemas,Config,PlannerMod,ExecutorMod,ToolsMod,ConfMod,IntervMod,ReplanMod,Qdrant,Gemini,MeCab default
+style UI fill:#1a1a1a,stroke:#fff,color:#fff
+style GracePackage fill:#1a1a1a,stroke:#fff,color:#fff
+style Core fill:#1a1a1a,stroke:#fff,color:#fff
+style Phase1 fill:#1a1a1a,stroke:#fff,color:#fff
+style Phase2 fill:#1a1a1a,stroke:#fff,color:#fff
+style Phase3 fill:#1a1a1a,stroke:#fff,color:#fff
+style Phase4 fill:#1a1a1a,stroke:#fff,color:#fff
+style External fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 7.5 依存モジュール詳細
@@ -1154,6 +1222,9 @@ flowchart TB
     H -->|No| J{"次のコレクション?"}
     J -->|Yes| G
     J -->|No| K["全結果を統合・最高スコア返却"]
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D,E,F,G,H,I,J,K default
 ```
 
 #### 7.5.3 grace/confidence.py — 信頼度計算
@@ -1221,6 +1292,9 @@ flowchart TB
     F --> H["新計画で Generator 再帰呼び出し"]
     G --> H
     H --> I["yield from execute_plan_generator(new_plan)"]
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D,E,F,G,H,I default
 ```
 
 #### 7.5.6 agent_cache.py — コレクションキャッシュ
@@ -1364,6 +1438,11 @@ flowchart TB
     F -->|Yes| G["st.markdown(最終回答)"]
     G --> H["chat_history.append(assistant_msg)"]
     F -->|No| I["st.warning: 応答なし"]
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,C1,C2,C3,C4,C5,D,D1,D2,D3,D3a,D3b,D4,D5,D6,D7,D8,E,F,G,H,I default
+style PlanEvents fill:#1a1a1a,stroke:#fff,color:#fff
+style ExecEvents fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 8.5 旧版イベント処理との対比
@@ -1426,6 +1505,12 @@ flowchart TB
 
     Layer1 --> Layer2
     Layer2 --> Layer3
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,B1,B2,B3,B4,C1,C2,C3 default
+style Layer1 fill:#1a1a1a,stroke:#fff,color:#fff
+style Layer2 fill:#1a1a1a,stroke:#fff,color:#fff
+style Layer3 fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 9.3 エラー表示コンポーネント
