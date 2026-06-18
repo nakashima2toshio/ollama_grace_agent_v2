@@ -206,6 +206,9 @@ pytest tests/ --cov=. --cov-report=term-missing --cov-report=html
 | `grace/planner.py` | `grace/test_planner_integration.py` | 2 | integration 🔌 | 読替 | #73 | 実 LLM での計画生成 |
 | `grace/tools.py` | `grace/test_dynamic_thresholding.py` | 3 | unit | そのまま | #81 | RAGSearchTool の動的スコア閾値 |
 | `grace/confidence.py` | `grace/test_confidence_fix.py` | 3 | unit | そのまま | #81 | ConfidenceFactors/Score の回帰修正 |
+| `grace/calibration.py` | `grace/test_calibration.py` | 18 | unit | そのまま | v2 | 温度スケーリング（apply/fit）、ECE 縮小、Calibrator 永続化・恒等フォールバック |
+| `grace/memory.py` | `grace/test_memory.py` | 17 | unit | そのまま | v2 | キーワード抽出、JSONL 記録/読込、コレクション事前分布（score 順・キーワード絞込）、best_collection 閾値 |
+| `grace/llm_compat.py` | `grace/test_llm_compat.py` | 14 | unit | 読替 | v2 | genai 互換 Ollama アダプタ（既定 ollama／model 伝播／gemini ルーティング／遅延初期化／JSON 抽出） |
 
 ## 2. サービス層（`tests/services/`）
 
