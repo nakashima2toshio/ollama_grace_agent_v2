@@ -191,6 +191,13 @@ class ExecutorConfig(BaseModel):
     parallel_search: bool = True
     max_parallel_steps: int = 4
 
+    # S3: ハイブリッド ReAct ループ
+    # react_enabled は既定 False（静的 Plan-Execute を温存）。有効化すると
+    # complexity >= react_complexity_threshold の計画を観測駆動 ReAct で実行する。
+    react_enabled: bool = False
+    react_complexity_threshold: float = 0.7  # この複雑度以上のみ ReAct（未満は静的パス）
+    react_max_iterations: int = 8            # ReAct ループの最大反復回数
+
 
 class OllamaConfig(BaseModel):
     """Ollama 設定（新規追加）
