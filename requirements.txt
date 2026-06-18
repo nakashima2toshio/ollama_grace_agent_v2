@@ -91,7 +91,7 @@ attrs==25.3.0 \
     #   anthropic-grace-agent
     #   jsonschema
     #   referencing
-audioop-lts==0.2.2 \
+audioop-lts==0.2.2 ; python_version >= '3.13' \
     --hash=sha256:03f061a1915538fd96272bac9551841859dbb2e3bf73ebe4a23ef043766f5449 \
     --hash=sha256:106753a83a25ee4d6f473f2be6b0966fc1c9af7e0017192f5531a3e7463dce58 \
     --hash=sha256:143fad0311e8209ece30a8dbddab3b65ab419cbe8c0dde6e8828da25999be911 \
