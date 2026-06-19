@@ -243,4 +243,4 @@ cython_debug/
 
 
 # Claude Code internal directories
-.claude/
+# .claude/
