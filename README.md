@@ -1,29 +1,41 @@
-# 自律型Agent + RAG (Anthropic Claude API版) プロジェクト
-#### (1) 自律型Agent　（Anthropic Claude API利用、スクラッチで作成）
-- (1-1) 計画策定（Plan）
-- → 実行（Execute）
-- → 信頼度評価（Confidence）
-- → 介入判定（Intervention）
-- → リプラン（Replan）
+# 自律型Agent + RAG (Ollama API版) プロジェクト
+#### (1) 自律型Agent（Ollama API利用、スクラッチで作成）
 
 ![自律型Agent](assets/ReActAgent.png)
-### 概要（ReAct とは）
-**ReAct（Reason + Act）** は、計画どおりに動くのではなく「**推論（Reason）→ 行動（Act）→ 観測（Observe）**」を繰り返し、**毎ターンその場で次の一手を決める**動的エージェント方式です。
-本プロジェクトでは `planner.py` が質問の複雑度（complexity）を見積もって計画を作り、複雑な質問のときだけ `executor.py` が ReAct ループに切り替えます。
-ループ内では `_decide_next_action` がこれまでの観測（`Scratchpad`）を踏まえて「検索する／推論して答える／終了する」を **LLM にその場で判断**させ、`_execute_step` で実行します。
-各ターンの結果は `confidence.py` の `decide_action` が信頼度で評価し、**根拠が十分なら finish、不十分なら検索を続行、低すぎれば人間に介入**を求めます。
-つまり「**観測しながら計画を組み替える**」点が、固定手順の Plan-Execute との決定的な違いです。
----
-### 要点・重点（特に「動的な判断」）
-### 1. 静的 Plan-Execute と動的 ReAct の二段構え（核心）
-`executor._dispatch_generator` が `plan.complexity >= react_complexity_threshold(0.7)` を見て切替えます。単純な質問は固定計画で速く、複雑な質問だけ ReAct で粘る——**無駄なループを避けつつ難問に強い**という設計上の肝です。
-### 2. 「次の一手」を実行時に決める（＝動的判断の本体）
-`_decide_next_action` は固定手順ではなく、直前までの観測（`Scratchpad`）を入力に LLM が `next_action` を選ぶ（`rag_search` / `web_search` / `reasoning` / `finish`）。検索結果が薄ければもう一度検索、揃えば回答生成、と**状況に応じて経路が変わる**のが ReAct の動的性です。
-### 3. 信頼度がループの「制御弁」
-`confidence.decide_action` が各ターンの信頼度を `SILENT` / `NOTIFY` / `CONFIRM` / `ESCALATE` に変換し、続行・人間介入・終了を動的に決定。さらに `GroundednessVerifier`（回答の各主張が引用ソースに支持されるか）を信頼度の主成分にしているため、「**根拠があるか**」で止め時を判断します。
-### 4. フォールバックで壊れない
-LLM 不在（ローカル Ollama 未起動など）でも `_decide_next_action` は初期計画の手順を順に辿る**静的動作へ degrade** します。動的判断は「**できるときに賢く、できないとき安全に**」が担保されています。
-### 5. 役割分担の一行まとめ
+### 概要
+
+```
+ユーザー入力
+  → [Phase 0] config.py         設定読み込み
+  → [Phase 0] schemas.py        データモデル定義（全Phase共通）
+  → [Phase 1](planner.py)        計画生成（ExecutionPlan作成）
+  → [Phase 1] tools.py          ツール登録（ToolRegistry構築）
+  → [Phase 1](executor.py)      計画実行（ステップ順次実行）
+  → [Phase 2](confidence.py)    信頼度計算（ステップ毎＋全体）
+  → [Phase 3](intervention.py)  介入判定（HITL）
+  → [Phase 4](replan.py)        動的リプラン（失敗時再計画）
+  → 最終回答を UI に返却
+```
+
+### 主な責務
+
+- ReAct ループによる多段ツール呼び出し制御
+- Qdrant RAG 検索ツールの実行管理
+- Reflection フェーズによる自己評価・回答改善
+- セッション単位の会話履歴管理
+- LLM 空レスポンス時のフォールバック制御
+
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|------|--------------|------|
+| 1 | ReAct ループ制御 | `services/agent_service.py` | `_execute_react_loop()` で Thought→Action→Observation を繰り返す |
+| 2 | RAG 検索ツール実行 | `agent_tools.py` | `search_rag_knowledge_base_cached()` でキャッシュ付き並列検索 |
+| 3 | Reflection フェーズ | `services/agent_service.py` | `_execute_reflection_phase()` で LLM 自己評価・修正 |
+| 4 | LLM 呼び出し | `helper/helper_llm.py` | `OllamaClient.generate_with_tools()` で4段フォールバック |
+| 5 | コレクションキャッシュ | `agent_cache.py` | `CollectionCache` で TTL 付きセッションキャッシュ |
+
+### 役割分担の一行まとめ
 | モジュール | 役割 | 判断の位置づけ |
 |---|---|---|
 | `planner.py` | どれだけ複雑かを見て計画と分岐を決める | 入口の判断 |
@@ -34,26 +46,92 @@ LLM 不在（ローカル Ollama 未起動など）でも `_decide_next_action` 
 ・計画策定（Plan）
 ![plan](assets/planner_auto.png)
 
+### Plan概要
+`planner.py`は、GRACE（Guided Reasoning with Adaptive Confidence Execution）エージェントの計画生成コンポーネントです。ユーザーの質問を分析し、回答生成に必要な実行計画（`ExecutionPlan`）を作成します。
+
+### Planの主な責務
+- ユーザークエリの複雑度推定（キーワードベース / LLMベース）
+- LLMを用いた実行計画の自動生成（Gemini API + 構造化出力）
+- 利用可能なコレクション（Qdrant）の動的取得
+- フィードバックに基づく計画の修正（リファインメント）
+- フォールバック計画の提供（LLM失敗時の安全な代替）
 
 → 実行（Execute）
 ![executor](assets/executor.png)
+## Executor概要
+- `executor.py`は、GRACE（Guided Reasoning with Adaptive Confidence Execution）エージェントの計画実行コンポーネントです。Plannerが生成した`ExecutionPlan`を受け取り、各ステップを順次実行して結果を管理します。
 
+### Executor主な責務
+- 計画の順次実行（ブロッキング版/ジェネレータ版）
+- ステップ間の依存関係管理
+- ツールの呼び出しと結果管理（ToolRegistry経由）
+- 信頼度（Confidence）の計算と評価（LLM版/Heuristic版）
+- Human-in-the-Loop（HITL）介入処理（NOTIFY/CONFIRM/ESCALATE）
+- 失敗時のリプラン連携（ReplanOrchestrator）
+- 実行状態の追跡とコールバック通知
 → 信頼度評価（Confidence）
+
 ![confidence](assets/confidence.png)
+### Confidence概要
+
+`confidence.py`は、GRACEエージェントにおける信頼度計算システムを実装するモジュール。ハイブリッド方式（重み付き平均 + LLM自己評価）による多軸信頼度計算を提供し、各ステップの実行結果に対して信頼度スコアを算出する。信頼度に基づくアクション決定（自動進行/通知/確認要求/エスカレーション）を行い、Human-in-the-Loopの介入レベルを制御する。
+
+### Confidenceの主な責務
+
+- ハイブリッド方式による多軸信頼度スコアの計算（検索品質・ソース一致度・LLM自己評価・ツール成功率・クエリ網羅度）
+- LLM（Gemini API）を活用した自己評価・信頼度判定
+- 複数情報源間の一致度計算（Embedding類似度ベース）
+- クエリに対する回答の網羅度評価
+- 信頼度スコアに基づく介入レベル決定（SILENT/NOTIFY/CONFIRM/ESCALATE）
+- 複数ステップの信頼度集計（平均/最小値/重み付き平均）
+
 
 → 介入判定（Intervention）
 ![intervention](assets/intervention.png)
-- （作図）作成中
+### Intervention概要
+
+`intervention.py`は、GRACE（GRaded Autonomy and Confidence-based Escalation）フレームワークにおけるHITL（Human-in-the-Loop）介入システムを提供するモジュールです。信頼度に応じた4段階の介入レベル（SILENT、NOTIFY、CONFIRM、ESCALATE）を管理し、人間とAIの協調的な意思決定を実現します。
+
+### Interventionの主な責務
+
+- 信頼度レベルに応じた介入リクエストの生成
+- ユーザーからの介入レスポンスの処理
+- 計画確認フロー（確認→修正→実行）の管理
+- ユーザーフィードバックに基づく動的閾値調整
+- 介入履歴の記録と管理
 
 → リプラン（Replan）
 ![replan](assets/replanning.png)
+### Replan概要
+
+`replan.py`は、GRACEフレームワークにおける動的リプランニングシステムを提供するモジュール。ステップ実行の失敗、低信頼度、ユーザーフィードバック、新情報の発見、タイムアウトなどのトリガーに応じて、実行計画を動的に修正・再生成する。
+
+### Replanの主な責務
+
+- リプランのトリガー条件判定（ステップ失敗・低信頼度・ユーザーフィードバック）
+- リプラン戦略の決定（部分再計画・全体再計画・代替・スキップ・中断）
+- 失敗情報やフィードバックを考慮した新計画の生成（フォールバックチェーン付き）
+- リプラン履歴の管理
+- Executorとの統合によるリプランフロー制御
 
 ## (2) Chunking（意味ある文章に分割する）
 - (2-1) 評価用データ：HuggingFaceからダウンロード
 - (2-2) RAG: Chunkデータの作成
 - (2-3) RAG: Qdrant(ベクターDB)への登録、検索
-![step123](assets/img_step1_2_3.png)
+
 ![RagデータDL・登録](assets/img_csv_text_to_chunks_text_csv.png)
+### チャンキングの概要
+
+`csv_text_to_chunks_text_csv.py`は、テキストまたはCSVファイルをLLMを使用して意味的なチャンクに分割するパイプラインモジュールです。3段階の処理（階層構造化→意味的分割→文脈連続性チェック）により、高品質なセマンティックチャンキングを実現します。非同期・並列処理による高速化、チェックポイント機能による中断再開をサポートします。
+
+### チャンキングの主な責務
+
+- CSVファイルまたはテキストファイルからのテキスト読み込み
+- LLMを使用した3段階セマンティックチャンキング処理
+- 非同期・並列処理による高速化（asyncio + Semaphore）
+- チェックポイントによる中断・再開機能
+- CSV/テキスト形式でのチャンク出力（改行正規化対応）
+- 出力ファイル名の自動生成（タイムスタンプ付き）
 
 > **はじめにお読みください**
 >
