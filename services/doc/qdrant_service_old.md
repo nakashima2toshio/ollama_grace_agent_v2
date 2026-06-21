@@ -243,8 +243,8 @@ def get_collection_embedding_params(
 | 次元数 | 推定モデル |
 |--------|-----------|
 | 1536 | text-embedding-3-small |
-| 3072 | gemini-embedding-001 |
-| 768 | gemini-embedding-001 |
+| 3072 | text-embedding-3-large |
+| 768 | nomic-embed-text |
 
 ---
 
@@ -361,14 +361,15 @@ def build_inputs_for_embedding(
 ```python
 def embed_texts_for_qdrant(
     texts: List[str],
-    model: str = "gemini-embedding-001",
+    model: str = "nomic-embed-text",
     batch_size: int = 100
 ) -> List[List[float]]
 ```
 
 **特徴**:
 - 空文字列・空白のみのテキストは自動的にダミーベクトル（ゼロベクトル）に置換
-- Gemini Embedding APIを使用（3072次元）
+- Ollama Embedding を使用（768次元）
+- APIキー不要（ローカル実行）／コストなし
 
 #### create_or_recreate_collection_for_qdrant(client, name, recreate, vector_size, use_sparse)
 
@@ -392,7 +393,7 @@ def create_or_recreate_collection_for_qdrant(
 | `use_sparse` | bool | False | Hybrid Search（Sparse Vector）の有効化 |
 
 **Hybrid Search有効時のベクトル構成**:
-- `default`: Dense Vector (Gemini/OpenAI)
+- `default`: Dense Vector (Ollama Embedding)
 - `text-sparse`: Sparse Vector (Splade)
 
 #### build_points_for_qdrant(df, vectors, domain, source_file, sparse_vectors, start_index)
@@ -448,7 +449,7 @@ def upsert_points_to_qdrant(
 ```python
 def embed_query_for_search(
     query: str,
-    model: str = "gemini-embedding-001",
+    model: str = "nomic-embed-text",
     dims: Optional[int] = None
 ) -> List[float]
 ```
@@ -456,19 +457,21 @@ def embed_query_for_search(
 **プロバイダー自動選択ロジック**:
 | 条件 | 選択されるプロバイダー |
 |------|----------------------|
+| dims == 768 | Ollama |
 | dims == 1536 | OpenAI |
-| dims == 3072 or 768 | Gemini |
+| dims == 3072 | OpenAI |
+| model に "nomic" を含む | Ollama |
 | model に "text-embedding-3" を含む | OpenAI |
 | model に "gemini" を含む | Gemini |
-| デフォルト | Gemini |
+| デフォルト | Ollama |
 
 ```python
 # 使用例
 query_vector = embed_query_for_search(
     "浦沢直樹の代表作は？",
-    dims=3072
+    dims=768
 )
-# -> 3072次元のベクトルを返す
+# -> 768次元のベクトルを返す
 ```
 
 ---
@@ -692,3 +695,4 @@ __all__ = [
 | 1.0 | 初版作成 |
 | 1.1 | 命名規則依存廃止、動的マッピング導入 |
 | 1.2 | Hybrid Search（Sparse Vector）対応 |
+| 1.3 (2026-06-21) | Ollama ネイティブ化の表記統一 |

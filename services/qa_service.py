@@ -7,7 +7,7 @@ Q/Aペアの生成と保存に関するビジネスロジック
 
 機能:
 - make_qa.py (QAPipeline) の実行
-- OpenAI APIによるQ/A生成
+- Ollama（ローカルLLM）によるQ/A生成
 - Q/Aペアの保存
 """
 
@@ -87,26 +87,26 @@ def generate_qa_pairs(
     text: str,
     dataset_type: str,
     chunk_id: str,
-    model: str = "gemini-2.0-flash",
+    model: str = "gemma4:e4b",
     qa_per_chunk: int = 3,
     log_callback=None,
 ) -> List[QAPair]:
     """
-    テキストからQ/Aペアを生成（Gemini API使用）
+    テキストからQ/Aペアを生成（Ollama 使用）
 
     Args:
         text: 対象テキスト
         dataset_type: データセットタイプ
         chunk_id: チャンクID
-        model: 使用するモデル（デフォルト: gemini-2.0-flash）
+        model: 使用するモデル（デフォルト: gemma4:e4b）
         qa_per_chunk: チャンクあたりのQ/A数
         log_callback: ログコールバック関数
 
     Returns:
         Q/Aペアのリスト
     """
-    # Geminiクライアントを使用
-    client = create_llm_client(provider="gemini")
+    # Ollama クライアントを使用
+    client = create_llm_client(provider="ollama")
 
     prompt = f"""あなたは教育用Q/Aペア生成の専門家です。
 
@@ -125,7 +125,7 @@ JSON形式で出力してください。
 """
 
     try:
-        # Gemini構造化出力APIを使用
+        # Ollama の構造化出力（JSON モード）を使用
         qa_response = client.generate_structured(
             prompt=prompt,
             response_schema=QAPairsResponse,

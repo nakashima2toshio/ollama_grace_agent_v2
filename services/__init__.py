@@ -13,7 +13,7 @@ agent_rag.pyから分離したビジネスロジック
 - dataset_service.py: データセット操作（ダウンロード、前処理）
 - qdrant_service.py: Qdrant操作（CRUD、ヘルスチェック）
 - file_service.py: ファイル操作（履歴読み込み、保存）
-- qa_service.py: Q/A生成（OpenAI API、サブプロセス実行）
+- qa_service.py: Q/A生成（Ollama、サブプロセス実行）
 """
 
 from services.cache_service import (

@@ -188,8 +188,8 @@ def get_collection_embedding_params(
     Returns:
         {"model": str, "dims": int, "provider": str}（取得できた項目のみ）
     """
-    # デフォルト設定（OpenAI）[MIGRATION] Gemini → OpenAI
-    default_params = {"model": "text-embedding-3-large", "dims": 3072}
+    # デフォルト設定（Ollama Embedding）
+    default_params = {"model": "nomic-embed-text", "dims": 768, "provider": "ollama"}
 
     # 1. payload に記録された Embedding メタデータを読む
     try:
@@ -660,7 +660,7 @@ _embedding_client_cache: dict = {}
 def embed_texts_for_qdrant(
         texts: List[str], model: str = "nomic-embed-text", batch_size: int = 100
 ) -> List[Optional[List[float]]]:
-    """テキストをバッチ処理でEmbeddingに変換（Ollama API使用）[MIGRATION] Gemini → OpenAI → Ollama
+    """テキストをバッチ処理で Embedding に変換（Ollama Embedding 使用）
 
     Returns:
         入力と同じ長さのリスト。空テキストの位置は None。
@@ -874,7 +874,7 @@ def build_points_for_qdrant(
         # ベクトル構造の構築
         if sparse_vectors:
             # Hybrid Search用 Named Vectors
-            # "default": Dense Vector (Gemini/OpenAI)
+            # "default": Dense Vector (Ollama Embedding)
             # "text-sparse": Sparse Vector (Splade)
             vector_struct = {
                 "default"    : vectors[i],
@@ -908,13 +908,14 @@ def upsert_points_to_qdrant(
 # ===================================================================
 
 def embed_query_for_search(
-        query: str, model: str = "text-embedding-3-large", dims: Optional[int] = None
+        query: str, model: str = "nomic-embed-text", dims: Optional[int] = None
 ) -> List[float]:
     """
     検索クエリをベクトル化
 
-    次元数(dims)またはモデル名(model)に基づいてプロバイダーを自動選択します。
-    [MIGRATION] デフォルトを gemini-embedding-001 → text-embedding-3-large に変更
+    既定は Ollama Embedding（nomic-embed-text / 768次元）。
+    既存コレクションとの互換のため、次元数(dims)またはモデル名(model)から
+    プロバイダーを自動判定するフォールバックも備える。
     """
     # デフォルトはOllama
     provider = "ollama"
@@ -941,7 +942,7 @@ def embed_query_for_search(
     # Embeddingクライアントを作成。次元数も明示的に渡す。
     embedding_client = create_embedding_client(provider=provider, dims=dims)
 
-    # Geminiの場合は検索用途 (retrieval_query) を明示
+    # 互換: Gemini プロバイダー判定時のみ検索用途 (retrieval_query) を明示
     task_type = "retrieval_query" if provider == "gemini" else None
     vector = embedding_client.embed_text(query, task_type=task_type)
 
@@ -1007,7 +1008,7 @@ def merge_collections(
         source_collections: List[str],
         target_collection: str,
         recreate: bool = True,
-        vector_size: int = 3072,
+        vector_size: int = 768,
         progress_callback: Optional[callable] = None,
 ) -> Dict[str, Any]:
     """複数コレクションを統合して新コレクションに登録

@@ -4,10 +4,8 @@ from typing import Any, Dict, Generator, List, Optional
 
 from agent_tools import RAGToolError, list_rag_collections, search_rag_knowledge_base, search_rag_knowledge_base_cached
 
-# [MIGRATION] from google import genai / from google.genai import types を削除
-# [MIGRATION] AgentConfig, GeminiConfig を削除（Anthropic版では不要）
-# [MIGRATION] AnthropicClient を helper_llm 経由で使用
-from helper.helper_llm import create_llm_client  # [FIXED] helper_llm → helper.helper_llm
+# LLM は Ollama を helper_llm 経由（create_llm_client）で使用
+from helper.helper_llm import create_llm_client
 from qdrant_client_wrapper import get_qdrant_client
 
 # 設定サービスからロガーと設定を取得
@@ -135,17 +133,15 @@ class ReActAgent:
         use_hybrid_search: bool = True  # ★追加: ハイブリッド検索フラグ
     ):
         self.selected_collections = selected_collections
-        # [MIGRATION openai→ollama→gemma4] モデルデフォルト: "claude-sonnet-4-6" → "llama3.2" → "gemma4:e4b"
+        # モデルデフォルトは Ollama の gemma4:e4b
         self.model_name = model_name or get_config("models.default", "gemma4:e4b")
         self.session_id = session_id or str(uuid.uuid4())
         self.use_hybrid_search = use_hybrid_search
 
-        # [MIGRATION openai→ollama] create_llm_client("openai") → create_llm_client("ollama")
-        # チャットセッション管理は messages リストで自前管理するため、
-        # _setup_client() / _create_chat() は廃止。
+        # Ollama クライアント。チャットセッションは messages リストで自前管理する。
         self.llm = create_llm_client("ollama", default_model=self.model_name)
 
-        # [MIGRATION] Anthropic はステートレス設計のため、会話履歴を self._messages で管理する。
+        # ステートレス設計のため会話履歴を self._messages で管理する。
         # execute_turn() の先頭でリセットされる。
         self._messages: List[Dict[str, Any]] = []
 
@@ -172,13 +168,12 @@ class ReActAgent:
             f"model: {self.model_name}, use_hybrid_search: {self.use_hybrid_search}"
         )
 
-    # [MIGRATION] _setup_client() を廃止。
-    # APIキー管理は create_llm_client("anthropic") 内部で ANTHROPIC_API_KEY を参照する。
+    # Ollama はローカル実行のため API キーは不要（クライアントのセットアップ処理も持たない）。
 
     def _build_system_instruction(self) -> str:
         """
-        [MIGRATION] _create_chat() の system_instruction 部分を独立したメソッドに分離。
-        Anthropic は system= パラメータで渡すため、chat セッションとは切り離す。
+        システムプロンプトを構築する。
+        Ollama へは system= パラメータで渡すため、chat セッションとは切り離す。
         """
         collections_str = (
             ", ".join(self.selected_collections)
@@ -189,14 +184,10 @@ class ReActAgent:
 
     def _build_tools(self) -> List[Dict[str, Any]]:
         """
-        [MIGRATION] Gemini 形式 (Python 関数参照) → Anthropic Tool Use 形式 (dict リスト) に変換。
+        ツール定義を組み立てる（Ollama／OpenAI 互換の Tool Use 形式）。
 
-        Gemini: types.Tool(function_declarations=[search_rag_knowledge_base, ...])
-        Anthropic: [{"name":..., "description":..., "input_schema":{...}}, ...]
-
-        変更点:
-          - "parameters" キー → "input_schema" キー
-          - Python 関数参照 → プレーンな dict
+        形式: [{"name":..., "description":..., "input_schema":{...}}, ...]
+        （引数スキーマは "input_schema" キー、プレーンな dict で定義する）
         """
         return [
             {
@@ -238,7 +229,7 @@ class ReActAgent:
         進捗状況をイベントとしてyieldするジェネレータ。
         """
         self.thought_log = []
-        # [MIGRATION] ターン開始時に会話履歴をリセット（Anthropic はステートレス設計）
+        # ターン開始時に会話履歴をリセット（ステートレス設計）
         self._messages = []
         logger.info(f"Starting agent turn. Session: {self.session_id}, Input: {user_input[:100]}...")
 
@@ -269,15 +260,13 @@ class ReActAgent:
 
     def _execute_react_loop(self, user_input: str) -> Generator[Dict[str, Any], None, None]:
         """
-        [MIGRATION] ReAct ループを Anthropic Tool Use 形式で実装。
+        ReAct ループを Ollama（OpenAI 互換）の Tool Use 形式で実装する。
 
-        Gemini との主な差異:
-          - chat.send_message() → generate_with_tools(messages, tools, system)
-          - part.function_call 走査 → stop_reason == "tool_use" + tool_calls リスト
-          - types.Part.from_function_response() → messages に2件追記
-              ① {"role":"assistant", "content": assistant_content}
-              ② {"role":"user",      "content": [{"type":"tool_result",...}]}
-          - 会話履歴は self._messages で自前管理（chat オブジェクト廃止）
+        要点:
+          - generate_with_tools(messages, tools, system) で LLM を呼び出す
+          - ツール呼び出しは finish_reason == "tool_calls" + tool_calls リストで検出
+          - ツール結果は {"role":"tool", "tool_call_id":id, "content":...} として追記
+          - 会話履歴は self._messages で自前管理（ステートレス設計）
         """
         # --- キーワード抽出とプロンプト拡張（変更なし）---
         augmented_input = user_input
@@ -300,8 +289,7 @@ class ReActAgent:
             except Exception as e:
                 logger.warning(f"Keyword extraction failed during turn: {e}")
 
-        # [MIGRATION] Anthropic: messages リストで会話履歴を管理
-        # Gemini の chat.send_message(augmented_input) に相当する初期化
+        # messages リストで会話履歴を管理（最初の user 発話を追加）
         self._messages.append({"role": "user", "content": augmented_input})
 
         max_turns = get_config("agent.max_turns", 10)
@@ -310,9 +298,7 @@ class ReActAgent:
         for turn_count in range(1, max_turns + 1):
             logger.debug(f"ReAct turn {turn_count}/{max_turns}")
 
-            # [MIGRATION] LLM 呼び出し
-            # [MIGRATION anthropic→openai] generate_with_tools() 呼び出しは共通
-            # Anthropic: stop_reason / OpenAI: finish_reason
+            # LLM 呼び出し（Ollama は OpenAI 互換の finish_reason を返す）
             text, tool_calls, finish_reason = self.llm.generate_with_tools(
                 messages   = self._messages,
                 tools      = self.tools,
@@ -325,9 +311,7 @@ class ReActAgent:
                 self.thought_log.append(f"🧠 **Thought:**\n{text}")
                 yield {"type": "log", "content": f"🧠 **Thought:**\n{text}"}
 
-            # [MIGRATION] ツール呼び出し検出
-            # Anthropic: stop_reason == "tool_use"
-            # OpenAI:    finish_reason == "tool_calls"
+            # ツール呼び出し検出（finish_reason == "tool_calls"）
             if finish_reason != "tool_calls" or not tool_calls:
                 if not text:
                     # gemma4:e4b 等の一部 Ollama モデルはファンクションコーリングで
@@ -355,9 +339,7 @@ class ReActAgent:
                 final_text_from_react = text
                 break
 
-            # [MIGRATION] assistant ターンを messages に追記
-            # Anthropic: content にブロックリストを格納
-            # OpenAI:    tool_calls フィールドを含む message 形式
+            # assistant ターンを messages に追記（OpenAI 互換の tool_calls フィールド形式）
             import json as _json
             self._messages.append({
                 "role"      : "assistant",
@@ -375,9 +357,7 @@ class ReActAgent:
                 ]
             })
 
-            # [MIGRATION] ツール結果を OpenAI 形式で追記
-            # Anthropic: tool_result を同一 user メッセージにまとめる（1件）
-            # OpenAI:    tool ごとに {"role":"tool"} メッセージを個別に追記（複数件）
+            # ツール結果を追記（OpenAI 互換: ツールごとに {"role":"tool"} メッセージを個別追記）
             for tc in tool_calls:
                 tool_name = tc["name"]
                 tool_args = tc["input"]
@@ -427,9 +407,8 @@ class ReActAgent:
                         agent_response = "(Search Failed)"
                     )
 
-                # [MIGRATION] OpenAI: tool_call_id 付きの tool メッセージとして個別追記
-                # Anthropic: {"type":"tool_result","tool_use_id":id,"content":...} を user にまとめ
-                # OpenAI:    {"role":"tool","tool_call_id":id,"content":...} を1件ずつ追記
+                # tool_call_id 付きの tool メッセージとして個別追記
+                # （OpenAI 互換: {"role":"tool","tool_call_id":id,"content":...}）
                 self._messages.append({
                     "role"        : "tool",
                     "tool_call_id": tool_id,
@@ -442,26 +421,19 @@ class ReActAgent:
 
     def _execute_reflection_phase(self, draft_answer: str) -> Generator[Dict[str, Any], None, str]:
         """
-        [MIGRATION] Reflection フェーズを Anthropic 版に書き換え。
+        Reflection フェーズ（回答案の自己評価・改善）。
 
-        Gemini との主な差異:
-          - self.chat.send_message(reflection_msg)
-              → self.llm.generate_content() で Tool Use なし呼び出し
-          - response.candidates[0].content.parts 走査
-              → generate_content() が str を直接返す（走査不要）
-          - function_call ガード
-              → generate_content() は tool_use を使わないため不要
-          - 会話履歴: self._messages に reflection_msg を追記してコンテキストを維持
+        要点:
+          - ツールなしの呼び出し（generate_with_tools(tools=[])）で実行する。
+          - self._messages を全件渡すことで、ReAct ループの検索結果・思考ログを
+            会話コンテキストとして引き継ぐ。
         """
         final_response_text = draft_answer
         try:
             reflection_msg = f"{REFLECTION_INSTRUCTION}\n\n**あなたの回答案:**\n{draft_answer}"
 
-            # [MIGRATION] 問題②修正: generate_content() → generate_with_tools(tools=[]) に変更。
-            # generate_content() はシングルターン呼び出しのため self._messages の
-            # 会話履歴（ReAct ループの検索結果・思考ログ）が引き継がれなかった。
-            # generate_with_tools(tools=[]) を使うことで、self._messages を全件渡し、
-            # Gemini の chat.send_message() と同様に会話コンテキストを維持する。
+            # generate_with_tools(tools=[]) で self._messages を全件渡し、
+            # ReAct ループの会話コンテキストを維持したまま自己評価させる。
             self._messages.append({"role": "user", "content": reflection_msg})
             reflection_raw, _, finish_reason = self.llm.generate_with_tools(
                 messages   = self._messages,
@@ -501,7 +473,7 @@ class ReActAgent:
                 final_response_text = reflection_answer
                 logger.info(f"Reflection Answer: {reflection_answer[:100]}...")
 
-            # [MIGRATION] Reflection 応答を会話履歴に追記（次回ターンへの引き継ぎ用）
+            # Reflection 応答を会話履歴に追記（次回ターンへの引き継ぎ用）
             if reflection_text:
                 self._messages.append({"role": "assistant", "content": reflection_text})
 
