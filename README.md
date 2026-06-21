@@ -1,137 +1,146 @@
-# 自律型Agent + RAG (Ollama API版) プロジェクト
-#### (1) 自律型Agent（Ollama API利用、スクラッチで作成）
+# 自律型Agent + RAG (Anthropic Claude API版) プロジェクト
+#### (1) 自律型Agent（Anthropic Claude API利用、スクラッチで作成）
+- (1-1) 自立型Agentの全体ロジック・流れ
+- 計画策定（Plan） → 実行（Execute）- → 信頼度評価（Confidence） → 介入判定（Intervention） → リプラン（Replan）
 
 ![自律型Agent](assets/ReActAgent.png)
-### 概要
+##### 2つのエージェントの位置づけ（メニュー・ラベル）:
+* 系統A（メニューの: Agent(ReAct+Reflection)) ＝ メニューで先に並ぶ標準版
+・経路は静的、「いつ止めるか」をLLMが動的に決める（単純・LLM任せ）
 
-```
-ユーザー入力
-  → [Phase 0] config.py         設定読み込み
-  → [Phase 0] schemas.py        データモデル定義（全Phase共通）
-  → [Phase 1](planner.py)        計画生成（ExecutionPlan作成）
-  → [Phase 1] tools.py          ツール登録（ToolRegistry構築）
-  → [Phase 1](executor.py)      計画実行（ステップ順次実行）
-  → [Phase 2](confidence.py)    信頼度計算（ステップ毎＋全体）
-  → [Phase 3](intervention.py)  介入判定（HITL）
-  → [Phase 4](replan.py)        動的リプラン（失敗時再計画）
-  → 最終回答を UI に返却
-```
+* 系統B（メニューの: 自律型Agent(最新：動的Agent)) ＝ 「最新」表記の推奨版
+・経路は動的、計画を状況に合わせて組み替える（高機能・自律適応）。
+![a_b](assets/AI_Agent_a_b.png)
 
-### 主な責務
-
-- ReAct ループによる多段ツール呼び出し制御
-- Qdrant RAG 検索ツールの実行管理
-- Reflection フェーズによる自己評価・回答改善
-- セッション単位の会話履歴管理
-- LLM 空レスポンス時のフォールバック制御
-
-### 各責務対応のモジュール
-
-| # | 責務 | 対応モジュール | 説明 |
-|---|------|--------------|------|
-| 1 | ReAct ループ制御 | `services/agent_service.py` | `_execute_react_loop()` で Thought→Action→Observation を繰り返す |
-| 2 | RAG 検索ツール実行 | `agent_tools.py` | `search_rag_knowledge_base_cached()` でキャッシュ付き並列検索 |
-| 3 | Reflection フェーズ | `services/agent_service.py` | `_execute_reflection_phase()` で LLM 自己評価・修正 |
-| 4 | LLM 呼び出し | `helper/helper_llm.py` | `OllamaClient.generate_with_tools()` で4段フォールバック |
-| 5 | コレクションキャッシュ | `agent_cache.py` | `CollectionCache` で TTL 付きセッションキャッシュ |
-
-### 役割分担の一行まとめ
-| モジュール | 役割 | 判断の位置づけ |
-|---|---|---|
-| `planner.py` | どれだけ複雑かを見て計画と分岐を決める | 入口の判断 |
-| `executor.py` | 次に何をするかを毎ターン決めて回す | ループの判断 |
-| `confidence.py` | 続けるか止めるか・人を呼ぶかを信頼度で決める | 停止の判断 |
-
-
-・計画策定（Plan）
+### 計画策定（Plan）
 ![plan](assets/planner_auto.png)
+## Planner概要
+- `planner.py`は、GRACE自律エージェントの「計画生成（Plan）」層を担うモジュールです。ユーザーの質問を分析し、`rag_search` → `reasoning` を中心とした実行計画（`ExecutionPlan`）を生成します。
+- 計画生成は二層方式を採用しており、単純なクエリはルールベースで即時に計画を作り（LLM呼び出しなし）、複雑なクエリや明示的なWeb検索指示のあるクエリのみ LLM（Anthropic Claude）で計画を生成します。
+- LLM 呼び出しは `grace/llm_compat.py` の `create_chat_client()` で生成したクライアント経由で行います。
+- このクライアントは google-genai 互換の `client.models.generate_content(...)` インターフェースを保ったまま、内部では Anthropic Claude（既定 `claude-sonnet-4-6`、軽量用途 `claude-haiku-4-5-20251001`）を呼び出すアダプターです。Embedding（検索）は別途 Gemini `gemini-embedding-001`（3072次元）を使用します。
 
-### Plan概要
-`planner.py`は、GRACE（Guided Reasoning with Adaptive Confidence Execution）エージェントの計画生成コンポーネントです。ユーザーの質問を分析し、回答生成に必要な実行計画（`ExecutionPlan`）を作成します。
-
-### Planの主な責務
+### Planner主な責務
 - ユーザークエリの複雑度推定（キーワードベース / LLMベース）
-- LLMを用いた実行計画の自動生成（Gemini API + 構造化出力）
+- 二層方式による実行計画の生成（ルールベース計画 / LLM計画の振り分け）
+- LLM（Anthropic Claude）を用いた実行計画の自動生成
 - 利用可能なコレクション（Qdrant）の動的取得
 - フィードバックに基づく計画の修正（リファインメント）
-- フォールバック計画の提供（LLM失敗時の安全な代替）
+- LLMエラー時のフォールバック計画の提供
 
-→ 実行（Execute）
+### 実行（Execute）
 ![executor](assets/executor.png)
 ## Executor概要
-- `executor.py`は、GRACE（Guided Reasoning with Adaptive Confidence Execution）エージェントの計画実行コンポーネントです。Plannerが生成した`ExecutionPlan`を受け取り、各ステップを順次実行して結果を管理します。
+- `executor.py`は、GRACE（Guided Reasoning with Adaptive Confidence Execution）エージェントの計画実行コンポーネントです。
+- Plannerが生成した`ExecutionPlan`を受け取り、各ステップを順次実行して結果を管理します。
+- LLM呼び出しは`grace/llm_compat.py`の互換クライアント（`create_chat_client`）経由で Anthropic Claude（デフォルト `claude-sonnet-4-6`）に委譲され、
+- Embedding は Gemini（`gemini-embedding-001`、3072次元）を継続利用します。
 
 ### Executor主な責務
-- 計画の順次実行（ブロッキング版/ジェネレータ版）
-- ステップ間の依存関係管理
-- ツールの呼び出しと結果管理（ToolRegistry経由）
-- 信頼度（Confidence）の計算と評価（LLM版/Heuristic版）
-- Human-in-the-Loop（HITL）介入処理（NOTIFY/CONFIRM/ESCALATE）
-- 失敗時のリプラン連携（ReplanOrchestrator）
+- 計画の順次実行（ブロッキング版／ジェネレータ版）
+- ステップ間の依存関係管理と検索ステップの並列プリフェッチ
+- ツールの呼び出しと結果管理（ToolRegistry経由、timeout制御付き）
+- RAG検索結果に基づく動的フォールバック連鎖（web_search／ask_user の動的挿入）
+- 信頼度（Confidence）の計算と評価（LLM版／Heuristic版／groundedness較正）
+- Human-in-the-Loop（HITL）介入処理（NOTIFY／CONFIRM／ESCALATE）
+- 失敗時・低信頼度時のリプラン連携（ReplanOrchestrator）
 - 実行状態の追跡とコールバック通知
-→ 信頼度評価（Confidence）
 
+### 信頼度評価（Confidence）
 ![confidence](assets/confidence.png)
-### Confidence概要
+## Confidence概要
+- `confidence.py` は、GRACE（Guided Reasoning with Adaptive Confidence Execution）における信頼度計算システムを実装するモジュールです。
+- ハイブリッド方式（重み付き平均 + LLM 自己評価 + 根拠妥当性検証）による多軸の信頼度算出と、
+- その結果に基づく介入レベル（自動進行〜ユーザー入力要求）の判定を担います。
 
-`confidence.py`は、GRACEエージェントにおける信頼度計算システムを実装するモジュール。ハイブリッド方式（重み付き平均 + LLM自己評価）による多軸信頼度計算を提供し、各ステップの実行結果に対して信頼度スコアを算出する。信頼度に基づくアクション決定（自動進行/通知/確認要求/エスカレーション）を行い、Human-in-the-Loopの介入レベルを制御する。
+- LLM 呼び出しは `llm_compat.create_chat_client()` が返す genai 互換クライアント経由で行われ、
+- 本プロジェクトでは Anthropic Claude（既定 `claude-sonnet-4-6`）が実体となります。
+- 一方、ソース一致度計算の Embedding は Gemini（`gemini-embedding-001`、3072次元）を継続利用します。
 
-### Confidenceの主な責務
+### Confidence主な責務
+- RAG 検索品質・ツール成功率などの要素から多軸信頼度を計算する
+- LLM 自己評価により回答の確信度・網羅度を取得する
+- 複数ソース間の意味的一致度を計算する
+- 最終回答の各主張が引用ソースに支持されるか（groundedness）を検証する
+- 信頼度スコアに基づいて介入レベル（アクション）を決定する
+- 複数ステップの信頼度を集計する
 
-- ハイブリッド方式による多軸信頼度スコアの計算（検索品質・ソース一致度・LLM自己評価・ツール成功率・クエリ網羅度）
-- LLM（Gemini API）を活用した自己評価・信頼度判定
-- 複数情報源間の一致度計算（Embedding類似度ベース）
-- クエリに対する回答の網羅度評価
-- 信頼度スコアに基づく介入レベル決定（SILENT/NOTIFY/CONFIRM/ESCALATE）
-- 複数ステップの信頼度集計（平均/最小値/重み付き平均）
-
-
-→ 介入判定（Intervention）
+### 介入判定（Intervention）
 ![intervention](assets/intervention.png)
-### Intervention概要
+## Intervention概要
+- `intervention.py`は、GRACE（GRaded Autonomy and Confidence-based Escalation）フレームワークにおけるHITL（Human-in-the-Loop）介入システムを提供するモジュールです。
+- 信頼度に応じた4段階の介入レベル（SILENT、NOTIFY、CONFIRM、ESCALATE）を管理し、人間とAIの協調的な意思決定を実現します。
 
-`intervention.py`は、GRACE（GRaded Autonomy and Confidence-based Escalation）フレームワークにおけるHITL（Human-in-the-Loop）介入システムを提供するモジュールです。信頼度に応じた4段階の介入レベル（SILENT、NOTIFY、CONFIRM、ESCALATE）を管理し、人間とAIの協調的な意思決定を実現します。
+- 本モジュールは純粋な介入制御ロジックであり、
+- LLM（Anthropic Claude `claude-sonnet-4-6`）やEmbedding（Gemini `gemini-embedding-001`）のAPIを直接呼び出しません。
+- 信頼度スコアやアクション決定（`ActionDecision`）は上流の `confidence.py` から受け取り、
+- 本モジュールはそれに応じた人間への介入要求とレスポンス処理に専念します。
 
-### Interventionの主な責務
-
+### Intervention主な責務
 - 信頼度レベルに応じた介入リクエストの生成
 - ユーザーからの介入レスポンスの処理
 - 計画確認フロー（確認→修正→実行）の管理
 - ユーザーフィードバックに基づく動的閾値調整
 - 介入履歴の記録と管理
 
-→ リプラン（Replan）
+### リプラン（Replan）
 ![replan](assets/replanning.png)
 ### Replan概要
+- `replan.py`は、GRACE自律エージェントの「動的リプランニング（Replan）」層を担うモジュールです。
+- ステップ実行の失敗・低信頼度・ユーザーフィードバック等のトリガーを検知し、
+- 状況に応じた戦略（全体再計画・部分再計画・フォールバック・スキップ・中断）で計画（`ExecutionPlan`）を動的に修正します。
+- 再計画の実体は `Planner.create_plan()` に委譲するため、
+- LLM（Anthropic Claude、既定 `claude-sonnet-4-6`）の呼び出しは `planner.py` を経由します。
 
-`replan.py`は、GRACEフレームワークにおける動的リプランニングシステムを提供するモジュール。ステップ実行の失敗、低信頼度、ユーザーフィードバック、新情報の発見、タイムアウトなどのトリガーに応じて、実行計画を動的に修正・再生成する。
+- 本モジュールは、リプラントリガー/戦略を表す `Enum`、
+- リプラン時の状態を保持するデータクラス、
+- 判定・戦略決定・計画再生成を行う `ReplanManager`、
+- Executor と統合して自動リプランフローを管理する `ReplanOrchestrator` から構成されます。
 
-### Replanの主な責務
-
-- リプランのトリガー条件判定（ステップ失敗・低信頼度・ユーザーフィードバック）
-- リプラン戦略の決定（部分再計画・全体再計画・代替・スキップ・中断）
-- 失敗情報やフィードバックを考慮した新計画の生成（フォールバックチェーン付き）
-- リプラン履歴の管理
-- Executorとの統合によるリプランフロー制御
+### Replan主な責務
+- リプラントリガー（失敗・低信頼度・フィードバック・新情報・タイムアウト）の定義
+- リプラン戦略（全体・部分・フォールバック・スキップ・中断）の定義と選択
+- ステップ結果・ユーザーフィードバックからのリプラン要否判定
+- 戦略に応じた新しい実行計画の生成（Plannerへの委譲を含む）
+- フォールバックチェーン（rag_search ↔ web_search）の適用
+- Executor と統合した自動リプランフローの管理
 
 ## (2) Chunking（意味ある文章に分割する）
 - (2-1) 評価用データ：HuggingFaceからダウンロード
 - (2-2) RAG: Chunkデータの作成
 - (2-3) RAG: Qdrant(ベクターDB)への登録、検索
+![データ・ダウンロード]
+![ダウンロード](assets/huggingface_download.png)
+### HuggingFace Data Download概要
+- `down_load_non_qa_rag_data_from_huggingface.py`は、HuggingFace Hub および直接ダウンロードによる
+- 非Q&A型データセットの取得・検証・前処理を行う Streamlit Web アプリケーション。
+- RAG（Retrieval-Augmented Generation）パイプラインの入力データを準備するためのツールであり、
+- 日本語・英語の多様なデータセットに対応する。
 
+### データ・ダウンロード主な責務
+- HuggingFace Hub / 直接URL からのデータセットダウンロード
+- データセット種別に応じた品質検証（Wikipedia / ニュース / 学術 / コード）
+- RAG 用テキスト抽出・クレンジング・結合前処理
+- トークン使用量とコストの推定表示
+- CSV / TXT / JSON フォーマットでの出力・保存
+
+![チャンキング]
 ![RagデータDL・登録](assets/img_csv_text_to_chunks_text_csv.png)
-### チャンキングの概要
+## 概要
+- `csv_text_to_chunks_text_csv.py` は、テキストまたは CSV ファイルを入力として受け取り、
+- LLM ベースの 3 段階アルゴリズム（階層構造化 → 意味的チャンキング → 文脈連続性チェック）で
+- 意味的なチャンクに分割するパイプラインモジュールです。
+- `asyncio` による並列化、`CheckpointManager` による再開機能、最終チャンクの最大トークン数強制
+- （Embedding の無言切り捨て防止）、CSV 出力時の改行正規化、メタデータ付き CSV と
+- シンプル CSV（`Text` カラムのみ）の二系統同時出力を提供します。
 
-`csv_text_to_chunks_text_csv.py`は、テキストまたはCSVファイルをLLMを使用して意味的なチャンクに分割するパイプラインモジュールです。3段階の処理（階層構造化→意味的分割→文脈連続性チェック）により、高品質なセマンティックチャンキングを実現します。非同期・並列処理による高速化、チェックポイント機能による中断再開をサポートします。
-
-### チャンキングの主な責務
-
-- CSVファイルまたはテキストファイルからのテキスト読み込み
-- LLMを使用した3段階セマンティックチャンキング処理
-- 非同期・並列処理による高速化（asyncio + Semaphore）
-- チェックポイントによる中断・再開機能
-- CSV/テキスト形式でのチャンク出力（改行正規化対応）
-- 出力ファイル名の自動生成（タイムスタンプ付き）
+### チャンキング・主な責務
+- 入力ファイル（`.txt` / `.csv`）の読み込みとテキスト抽出
+- 3 段階 LLM 処理（段落分割 / 意味的分割 / 連続性結合）の実行
+- `asyncio.gather` による並列 API 呼び出しと進捗表示（tqdm）
+- チェックポイントによる中断・再開のサポート
+- 最終チャンクの最大トークン数強制（Embedding 入力上限超過防止）
+- CSV 形式での保存（メタデータ付き + シンプル版）
 
 > **はじめにお読みください**
 >
@@ -142,10 +151,11 @@
 > | 3 | [uv パッケージマネージャー (docs/uv_install.md)](./docs/uv_install.md) | pip → uv 移行・仮想環境管理手順 |
 > | 4 | [RAG データ取得ガイド (down_load_non_qa_rag_data_from_huggingface.md)](./down_load_non_qa_rag_data_from_huggingface.md) | RAG データを HuggingFace からダウンロード・前処理する手順 |
 > | 5 | [RAG ツール使用ガイド (readme_usage_tools.md)](./readme_usage_tools.md) | チャンク作成 → Q/A 生成・Qdrant 登録 → Agent 検索の操作手順 |
-> | 6 | [RAG Q/A 生成・検索システム (readme_rag.md)](./readme_rag.md) | RAG パイプライン全体の設計・クラス・関数 IPO 詳細（セマンティックチャンキング / Q&A 生成 / Qdrant 検索） |
-> | 7 | [Streamlit アプリ設計書 (docs/agent_rag.md)](./docs/agent_rag.md) | agent_rag.py のアーキテクチャ・ページ構成・Anthropic Claude 設定・モデル一覧 |
-> | 8 | [ReAct+Reflection エージェント (readme_react_reflection.md)](./readme_react_reflection.md) | ReAct（Reasoning+Acting）ループ + Reflection 自己評価による自律型 RAG エージェントの設計と実装 |
-> | 9 | [自律型 Agent — GRACE (readme_autonomous_agent.md)](./readme_autonomous_agent.md) | GRACE（Plan→Execute→Confidence→Intervention→Replan）アーキテクチャの設計・IPO 詳細 |
+> | 6 | [自立型/自律型 Agent 比較 (docs/agent_a_b.md)](./docs/agent_a_b.md) | 系統A(ReAct+Reflection) と 系統B(GRACE/最新・動的Agent) のアーキテクチャ・処理フロー・違いの比較 |
+> | 7 | [RAG Q/A 生成・検索システム (readme_rag.md)](./readme_rag.md) | RAG パイプライン全体の設計・クラス・関数 IPO 詳細（セマンティックチャンキング / Q&A 生成 / Qdrant 検索） |
+> | 8 | [Streamlit アプリ設計書 (docs/agent_rag.md)](./docs/agent_rag.md) | agent_rag.py のアーキテクチャ・ページ構成・Anthropic Claude 設定・モデル一覧 |
+> | 9 | [ReAct+Reflection エージェント (readme_react_reflection.md)](./readme_react_reflection.md) | ReAct（Reasoning+Acting）ループ + Reflection 自己評価による自律型 RAG エージェントの設計と実装 |
+> | 10 | [自律型 Agent — GRACE (readme_autonomous_agent.md)](./readme_autonomous_agent.md) | GRACE（Plan→Execute→Confidence→Intervention→Replan）アーキテクチャの設計・IPO 詳細 |
 >
 > **技術参考資料**
 >
@@ -171,15 +181,17 @@
 | 3 | [docs/uv_install.md](./docs/uv_install.md)（uv パッケージ管理） | `pyproject.toml`, `uv.lock` | `requirements.txt` |
 | 4 | [down_load_non_qa_rag_data_from_huggingface.md](./down_load_non_qa_rag_data_from_huggingface.md)（RAGデータ取得） | `down_load_non_qa_rag_data_from_huggingface.py` | `datasets/` 配下 |
 | 5 | [readme_usage_tools.md](./readme_usage_tools.md)（RAGツール操作手順） | `chunking/csv_text_to_chunks_text_csv.py`, `qa_qdrant/make_qa_register_qdrant.py`, `qa_qdrant/register_to_qdrant.py` | `chunking/*`（`async_api_client.py`, `checkpoint_manager.py`, `prompts.py` 等）, `qa_qdrant/make_qa.py` |
-| 6 | [readme_rag.md](./readme_rag.md)（RAG Q/A生成・検索システム設計） | `chunking/`, `qa_generation/`（`semantic.py`, `smart_qa_generator.py`, `pipeline.py`, `evaluation.py`）, `qa_qdrant/`, `qdrant_client_wrapper.py` | `helper/helper_rag*.py`, `helper/helper_embedding*.py`, `services/qdrant_service.py`, `models.py` |
-| 7 | [docs/agent_rag.md](./docs/agent_rag.md)（Streamlitアプリ設計書） | `agent_rag.py` | `ui/app.py`, `ui/pages/*`（`grace_chat_page.py`, `agent_chat_page.py`, `qdrant_*` 等）, `ui/components/*` |
-| 8 | [readme_react_reflection.md](./readme_react_reflection.md)（ReAct+Reflectionエージェント） | `services/agent_service.py`（`ReActAgent`） | `agent_main.py`, `agent_tools.py`, `agent_parallel_search.py`, `agent_cache.py`, `ui/pages/agent_chat_page.py`, `services/qa_service.py`, `services/qdrant_service.py`, `helper/helper_llm.py`, `helper/helper_embedding*.py` |
-| 9 | [readme_autonomous_agent.md](./readme_autonomous_agent.md)（自律型Agent — GRACE） | `grace/` パッケージ（`planner.py`, `executor.py`, `confidence.py`, `intervention.py`, `replan.py`, `calibration.py`, `llm_compat.py`, `schemas.py`, `config.py`, `tools.py`） | `grace/benchmark.py`, `ui/pages/grace_chat_page.py`, `ui/components/grace_components.py` |
+| 6 | [docs/agent_a_b.md](./docs/agent_a_b.md)（系統A/系統B エージェント比較） | `services/agent_service.py`（`ReActAgent`＝系統A）, `grace/`（`planner.py`, `executor.py`＝系統B） | `ui/pages/agent_chat_page.py`, `ui/pages/grace_chat_page.py`, `grace/confidence.py`, `grace/replan.py`, `grace/tools.py`, `agent_rag.py` |
+| 7 | [readme_rag.md](./readme_rag.md)（RAG Q/A生成・検索システム設計） | `chunking/`, `qa_generation/`（`semantic.py`, `smart_qa_generator.py`, `pipeline.py`, `evaluation.py`）, `qa_qdrant/`, `qdrant_client_wrapper.py` | `helper/helper_rag*.py`, `helper/helper_embedding*.py`, `services/qdrant_service.py`, `models.py` |
+| 8 | [docs/agent_rag.md](./docs/agent_rag.md)（Streamlitアプリ設計書） | `agent_rag.py` | `ui/app.py`, `ui/pages/*`（`grace_chat_page.py`, `agent_chat_page.py`, `qdrant_*` 等）, `ui/components/*` |
+| 9 | [readme_react_reflection.md](./readme_react_reflection.md)（ReAct+Reflectionエージェント） | `services/agent_service.py`（`ReActAgent`） | `agent_main.py`, `agent_tools.py`, `agent_parallel_search.py`, `agent_cache.py`, `ui/pages/agent_chat_page.py`, `services/qa_service.py`, `services/qdrant_service.py`, `helper/helper_llm.py`, `helper/helper_embedding*.py` |
+| 10 | [readme_autonomous_agent.md](./readme_autonomous_agent.md)（自律型Agent — GRACE） | `grace/` パッケージ（`planner.py`, `executor.py`, `confidence.py`, `intervention.py`, `replan.py`, `calibration.py`, `llm_compat.py`, `schemas.py`, `config.py`, `tools.py`） | `grace/benchmark.py`, `ui/pages/grace_chat_page.py`, `ui/components/grace_components.py` |
 
 **補足:**
 
-- `agent_rag.py` は Streamlit アプリのエントリで、`ui/pages/` 配下の各ページを束ねます。README.md（#0）と docs/agent_rag.md（#7）はこのアプリ層が主対象です。
-- #8（ReAct+Reflection）と #9（GRACE）は別系統のエージェントです。ReAct は `services/agent_service.py`（google-genai 直叩き＋Reflection フェーズ・レガシー経路で、モデル名は Gemini 系へ自動フォールバック）、GRACE は `grace/` パッケージ（Plan→Execute→Confidence→Intervention→Replan、`grace/llm_compat.py` 経由で Anthropic Claude 既定）。
+- `agent_rag.py` は Streamlit アプリのエントリで、`ui/pages/` 配下の各ページを束ねます。README.md（#0）と docs/agent_rag.md（#8）はこのアプリ層が主対象です。
+- #6（系統A/系統B 比較）は両エージェントの違いをまとめた対比ドキュメントです。
+- #9（ReAct+Reflection）と #10（GRACE）は別系統のエージェントです。ReAct は `services/agent_service.py`（`create_llm_client("anthropic")` + Anthropic Tool Use `generate_with_tools`／`stop_reason=="tool_use"` の ReAct ループ＋Reflection フェーズ）、GRACE は `grace/` パッケージ（Plan→Execute→Confidence→Intervention→Replan、`grace/llm_compat.py` 経由で Anthropic Claude 既定）。いずれも LLM は Anthropic Claude（既定 `claude-sonnet-4-6`）。
 - 技術スタック規約：LLM = Anthropic Claude（`claude-sonnet-4-6`、`grace/llm_compat.py` 経由）、Embedding = Gemini（`gemini-embedding-001`・3072次元）。ただしチャンキング/Q&A 生成の CLI ツール（`chunking/`・`qa_qdrant/`）は argparse 既定が `gemini-2.5-flash` で、`--model claude-sonnet-4-6` で上書き可能。
 
 ---
