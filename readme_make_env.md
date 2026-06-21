@@ -1,8 +1,8 @@
-# Agent RAG (Anthropic) 環境構築手順書
+# Agent RAG (Ollama) 環境構築手順書
 
 **開発マシン:** MacBook Air M2 / 24GB メモリ / macOS
 
-**Version 1.2** | **最終更新:** 2026-06-17
+**Version 1.3** | **最終更新:** 2026-06-21
 
 ---
 
@@ -14,20 +14,20 @@
 graph TD
     User(("ユーザー<br>ブラウザ")) -->|"http://localhost:8501"| Streamlit["Streamlit アプリケーション<br>agent_rag.py<br>Port: 8501"]
 
-    Streamlit -->|"Q&A生成 / AI応答"| Anthropic["Anthropic API<br>Claude Sonnet<br>クラウド"]
-    Streamlit -->|"Embedding生成"| Gemini["Gemini API<br>gemini-embedding-001<br>クラウド"]
+    Streamlit -->|"Q&A生成 / AI応答"| Ollama["Ollama<br>gemma4:e4b<br>ローカル"]
+    Streamlit -->|"Embedding生成"| OllamaEmb["Ollama Embedding<br>nomic-embed-text<br>ローカル"]
     Streamlit -->|"ベクトル検索"| Qdrant[("Qdrant<br>Port: 6333<br>Docker")]
     Streamlit -.->|"タスク登録"| Redis[("Redis<br>Port: 6379<br>Docker")]
 
     subgraph BG["Background Jobs"]
         Celery["Celery Workers<br>並列処理"]
         Celery -->|"タスク取得/結果保存"| Redis
-        Celery -->|"Q&A生成"| Anthropic
-        Celery -->|"Embedding生成"| Gemini
+        Celery -->|"Q&A生成"| Ollama
+        Celery -->|"Embedding生成"| OllamaEmb
     end
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class User,Streamlit,Anthropic,Gemini,Qdrant,Redis,Celery default
+class User,Streamlit,Ollama,OllamaEmb,Qdrant,Redis,Celery default
 style BG fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
@@ -91,7 +91,27 @@ brew install redis
 brew services start redis
 ```
 
-### 1.6 MeCab（オプション: キーワード抽出用）
+### 1.6 Ollama（ローカルLLM / Embedding）
+
+LLM（チャンク分割 / Q&A生成 / Agent応答）と Embedding はすべて **Ollama**（ローカル実行・OpenAI互換 `/v1` エンドポイント）で処理します。クラウドの API キーは不要です。
+
+```bash
+# Ollama 本体のインストール
+brew install ollama
+
+# Ollama サーバの起動（既定: http://localhost:11434）
+ollama serve
+
+# 使用モデルの取得（別ターミナルで）
+ollama pull gemma4:e4b          # LLM（デフォルト。代替: ollama pull llama3.2）
+ollama pull nomic-embed-text    # Embedding（768次元）
+```
+
+> Embedding は Ollama の `nomic-embed-text`（768次元）を使用します。LLM は `gemma4:e4b`（代替 `llama3.2`）が既定です。
+> いずれもローカルで実行されるため **API コストは発生せず、API キーも不要** です。
+> 接続先を変更したい場合のみ `OLLAMA_BASE_URL`（既定 `http://localhost:11434/v1`）を `.env` に設定します。
+
+### 1.7 MeCab（オプション: キーワード抽出用）
 
 ```bash
 brew install mecab mecab-ipadic
@@ -108,8 +128,8 @@ brew install mecab mecab-ipadic
 ### 2.1 リポジトリのクローン
 
 ```bash
-git clone https://github.com/nakashima2toshio/anthropic_grace_agent.git
-cd anthropic_grace_agent
+git clone https://github.com/nakashima2toshio/ollama_grace_agent_v2.git
+cd ollama_grace_agent_v2
 ```
 
 ### 2.2 依存関係のインストール（uv）
@@ -142,11 +162,8 @@ streamlit==1.52.1
 fastapi>=0.116.0
 gradio==5.44.1
 
-# === Anthropic API (LLM: チャンク分割 / Q&A生成 / Agent応答) ===
-anthropic>=0.40.0
-
-# === Gemini API (Embedding: Qdrant登録・検索用。from google import genai) ===
-google-genai==1.52.0
+# === Ollama クライアント (LLM / Embedding: OpenAI互換クライアントを Ollama に向けて使用。API キー不要) ===
+openai>=1.100.2
 
 # === ベクトルDB (Qdrant) ===
 qdrant-client==1.16.1
@@ -172,8 +189,10 @@ pydantic==2.12.5
 mecab-python3>=1.0.12
 ```
 
-> **注意:** Embedding は Gemini API（クラウド）経由で生成するため、ローカル GPU は不要です。
-> `gemini-embedding-001`（3072次元）を使用します。
+> **注意:** LLM・Embedding はいずれも Ollama（ローカル実行）で生成します。
+> LLM は `gemma4:e4b`（代替 `llama3.2`）、Embedding は `nomic-embed-text`（768次元）を使用します。
+> ローカル実行のため API コストは発生せず、クラウドの API キーも不要です。
+> `openai` パッケージは OpenAI互換クライアントとして Ollama の `/v1` エンドポイントに接続する用途で使用します。
 
 ---
 
@@ -298,12 +317,9 @@ http://localhost:5555
 プロジェクトルートに `.env` を作成:
 
 ```bash
-# === Anthropic API (LLM: チャンク分割 / Q&A生成 / Agent応答) ===
-ANTHROPIC_API_KEY=your_anthropic_api_key_here
-
-# === Gemini API (Embedding: Qdrant登録・検索用) ===
-GEMINI_API_KEY=your_gemini_api_key_here
-GOOGLE_API_KEY=your_gemini_api_key_here
+# === Ollama (LLM / Embedding: ローカル実行・API キー不要) ===
+# 接続先を変更する場合のみ設定（既定は http://localhost:11434/v1）
+# OLLAMA_BASE_URL=http://localhost:11434/v1
 
 # === Cohere API（オプション: Rerank 用） ===
 COHERE_API_KEY=your_cohere_api_key_here
@@ -322,14 +338,22 @@ CELERY_BROKER_URL=redis://localhost:6379/0
 CELERY_RESULT_BACKEND=redis://localhost:6379/0
 ```
 
-> LLM は `ANTHROPIC_API_KEY`、Embedding は `GEMINI_API_KEY` / `GOOGLE_API_KEY`（同じ Gemini キーを両方に設定）を使用します。
+> LLM・Embedding はいずれも Ollama（ローカル実行）で処理します。クラウドの API キーは不要です。
+> 接続先を変更したい場合のみ `OLLAMA_BASE_URL`（既定 `http://localhost:11434/v1`）を設定してください。
 
-### 6.2 API キーの取得先
+### 6.2 事前準備・オプション API キーの取得先
+
+Ollama（LLM / Embedding）はローカル実行のため API キーは不要です。事前に `ollama serve` でサーバを起動し、必要なモデルを取得しておきます。
+
+```bash
+ollama pull gemma4:e4b          # LLM（代替: ollama pull llama3.2）
+ollama pull nomic-embed-text    # Embedding（768次元）
+```
+
+オプション機能で利用する API キーの取得先:
 
 | API | 取得先 | 用途 |
 |---|---|---|
-| Anthropic API Key | https://console.anthropic.com/settings/keys | LLM（Q&A生成・Agent応答） |
-| Gemini API Key | https://aistudio.google.com/apikey | Embedding（Qdrant登録・検索） |
 | Cohere API Key | https://dashboard.cohere.com/api-keys | Rerank（オプション） |
 | SerpAPI Key | https://serpapi.com/ | Web 検索（オプション・backend=serpapi） |
 | Google CSE Key / Engine ID | https://programmablesearchengine.google.com/ | Web 検索（オプション・backend=google_cse） |
@@ -382,8 +406,8 @@ docker compose -f docker-compose/docker-compose.yml down
 [ ] Docker Desktop が起動している
 [ ] docker compose -f docker-compose/docker-compose.yml up -d で Qdrant / Redis が起動
 [ ] curl http://localhost:6333/health が正常応答
-[ ] .env に ANTHROPIC_API_KEY が設定されている（LLM用）
-[ ] .env に GOOGLE_API_KEY / GEMINI_API_KEY が設定されている（Gemini Embedding用）
+[ ] Ollama サーバが起動している（ollama serve / curl http://localhost:11434/api/tags が応答）
+[ ] ollama pull gemma4:e4b（LLM）と ollama pull nomic-embed-text（Embedding）が完了
 [ ] ./start_celery.sh status でワーカーが起動中
 [ ] uv run streamlit run agent_rag.py が正常起動
 [ ] ブラウザで http://localhost:8501 にアクセス可能
@@ -414,7 +438,17 @@ tail -50 logs/celery_qa_worker.log
 
 ### Planner/Executor 初期化エラー
 
-`ANTHROPIC_API_KEY`（LLM用）または `GOOGLE_API_KEY` / `GEMINI_API_KEY`（Gemini Embedding用）が `.env` に設定されているか確認してください。
+Ollama サーバが起動しており、必要なモデル（`gemma4:e4b` / `nomic-embed-text`）が取得済みか確認してください。
+
+```bash
+# Ollama サーバの起動確認
+curl http://localhost:11434/api/tags
+
+# 取得済みモデルの一覧
+ollama list
+
+# 接続先を変更している場合は OLLAMA_BASE_URL（既定 http://localhost:11434/v1）を確認
+```
 
 ```bash
 # PYTHONPATH にプロジェクトルートを追加
@@ -440,6 +474,7 @@ uv sync
 | サービス  | ポート | 用途                         |
 | --------- | ------ | ---------------------------- |
 | Streamlit | 8501   | Web UI                       |
+| Ollama    | 11434  | ローカルLLM / Embedding API  |
 | Qdrant    | 6333   | ベクトルDB REST API          |
 | Redis     | 6379   | Celery ブローカー / 結果保存 |
 | Flower    | 5555   | Celery タスクモニタリング    |

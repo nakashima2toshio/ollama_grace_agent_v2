@@ -1,7 +1,7 @@
-# Agent RAG (Anthropic) ツール使用ガイド
+# Agent RAG (Ollama) ツール使用ガイド
 
-> バージョン: v1.2
-> 最終更新: 2026-06-17
+> バージョン: v1.3
+> 最終更新: 2026-06-21
 
 ---
 
@@ -27,21 +27,24 @@ docker compose -f docker-compose/docker-compose.yml exec redis redis-cli ping
 # → PONG が返れば OK
 ```
 
-### 0.2 環境変数の確認
+### 0.2 Ollama の確認（API キー不要）
 
-`.env` ファイルに API キーが設定されていることを確認:
+本プロジェクトはローカル実行（Ollama）のため、LLM/Embedding 用の API キーは不要です。
+Ollama が起動し、必要なモデルが取得済みであることを確認します:
 
 ```bash
-# 必須（LLM: チャンク分割 / Q&A生成 / Agent応答）
-ANTHROPIC_API_KEY=your_anthropic_api_key
+# 起動済みモデルの確認
+ollama list
 
-# 必須（Embedding: Qdrant登録・検索）
-GEMINI_API_KEY=your_gemini_api_key
-GOOGLE_API_KEY=your_gemini_api_key
+# Ollama サーバの疎通確認（OpenAI 互換 /v1 を内包）
+curl http://localhost:11434/api/tags
 
-# オプション（Rerank 使用時）
-COHERE_API_KEY=your_cohere_api_key
+# 必要なモデルの取得（未取得の場合）
+ollama pull gemma4:e4b        # LLM（代替: llama3.2）
+ollama pull nomic-embed-text  # Embedding（768次元）
 ```
+
+> 任意: Ollama を別ホスト/ポートで動かす場合のみ `OLLAMA_BASE_URL`（例: `http://localhost:11434`）を `.env` に設定します。
 
 ### 0.3 Celery ワーカーの起動
 
@@ -69,14 +72,14 @@ Flower（タスクモニタリング UI）: http://localhost:5555
 
 ### ツール 1: チャンク作成
 
-チャンク用 LLM は軽量な `claude-haiku-4-5-20251001` で十分です。
+チャンク用 LLM は軽量なローカルモデル `gemma4:e4b`（代替: `llama3.2`）で十分です。
 チャンク結果（`*_chunks.csv`）は後続ステージ・他プロジェクトの共通入力になります。
 
 ```bash
 uv run python -m chunking.csv_text_to_chunks_text_csv \
   --input-file OUTPUT/cc_news_1per.csv \
   --output output_chunked \
-  --model claude-haiku-4-5-20251001 \
+  --model gemma4:e4b \
   --workers 2
 ```
 
@@ -88,8 +91,8 @@ uv run python -m chunking.csv_text_to_chunks_text_csv \
 
 uv run python qa_qdrant/make_qa_register_qdrant.py \
   --input-file output_chunked/cc_news_1per_chunks.csv \
-  --collection cc_news_1per \
-  --model claude-sonnet-4-6 \
+  --collection cc_news_1per_ollama \
+  --model gemma4:e4b \
   --concurrency 8 \
   --use-celery \
   --recreate
@@ -131,7 +134,7 @@ CSV ファイルからチャンク作成:
 uv run python -m chunking.csv_text_to_chunks_text_csv \
   --input-file OUTPUT/cc_news_1per.csv \
   --output output_chunked \
-  --model claude-haiku-4-5-20251001 \
+  --model gemma4:e4b \
   --workers 2 \
   --block-size 1000
 ```
@@ -142,7 +145,7 @@ uv run python -m chunking.csv_text_to_chunks_text_csv \
 uv run python -m chunking.csv_text_to_chunks_text_csv \
   --input-file ./data/document.txt \
   --output output_chunked \
-  --model claude-haiku-4-5-20251001 \
+  --model gemma4:e4b \
   --workers 2
 ```
 
@@ -152,7 +155,7 @@ uv run python -m chunking.csv_text_to_chunks_text_csv \
 |-----------|-----------|------|
 | `--input-file` | （必須） | 入力ファイル（.txt / .csv） |
 | `--output` | `chunks_output` | 出力ディレクトリ（運用上は `output_chunked` を使用） |
-| `--model` | `gemini-2.5-flash` | 使用する LLM モデル。本プロジェクト推奨は `claude-sonnet-4-6`（軽量用途は `claude-haiku-4-5-20251001`）を `--model` で明示指定 |
+| `--model` | `gemma4:e4b` | 使用するローカル LLM モデル（Ollama）。本プロジェクト推奨は `gemma4:e4b`（代替は `llama3.2`）を `--model` で明示指定 |
 | `--workers` | `8` | 並列ワーカー数（asyncio） |
 | `--block-size` | `1000` | ブロックサイズ（文字数）。大きすぎると MAX_TOKENS エラー |
 | `--text-column` | 自動検出 | CSV のテキストカラム名 |
@@ -180,7 +183,7 @@ uv run python -m chunking.csv_text_to_chunks_text_csv \
 
 ### 2.6 注意事項
 
-Anthropic API のレート制限に引っかかる場合は、`--block-size` を小さく（例: 500）、`--workers` を減らして（例: 2）調整してください。
+ローカル実行のため API コストは発生しません（トークン集計のみ）。ローカルマシンのメモリ/負荷が逼迫する場合は、`--block-size` を小さく（例: 500）、`--workers` を減らして（例: 2）調整してください。
 
 ---
 
@@ -200,7 +203,7 @@ Anthropic API のレート制限に引っかかる場合は、`--block-size` を
   ↓   ・LLM がチャンクごとに最適な Q/A 数を決定（0〜5 個・構造化出力 1 回/チャンク）
   ↓   ・question/answer が既にある CSV は生成をスキップ
   ↓ Phase 2: Qdrant 登録（register_to_qdrant へ委譲）
-  ↓   ・Embedding 生成（gemini-embedding-001, 3072 次元）
+  ↓   ・Embedding 生成（nomic-embed-text, 768 次元）
   ↓   ・コレクション作成 + バッチアップサート + 件数突合検証
 Q/A ペア CSV + Qdrant 登録完了
 ```
@@ -214,7 +217,7 @@ Q/A ペア CSV + Qdrant 登録完了
 
 uv run python qa_qdrant/make_qa_register_qdrant.py \
   --input-file output_chunked/cc_news_1per_chunks.csv \
-  --collection cc_news_1per \
+  --collection cc_news_1per_ollama \
   --use-celery \
   --concurrency 8 \
   --recreate
@@ -225,7 +228,7 @@ Celery を使わない同期処理:
 ```bash
 uv run python qa_qdrant/make_qa_register_qdrant.py \
   --input-file output_chunked/cc_news_1per_chunks.csv \
-  --collection cc_news_1per \
+  --collection cc_news_1per_ollama \
   --recreate
 ```
 
@@ -234,7 +237,7 @@ uv run python qa_qdrant/make_qa_register_qdrant.py \
 ```bash
 uv run python qa_qdrant/make_qa_register_qdrant.py \
   --dataset wikipedia_ja \
-  --collection wikipedia_ja \
+  --collection wikipedia_ja_ollama \
   --use-celery \
   --concurrency 8 \
   --recreate
@@ -259,7 +262,7 @@ uv run python qa_qdrant/make_qa_register_qdrant.py \
 
 | オプション | デフォルト | 説明 |
 |-----------|-----------|------|
-| `--model` | `gemini-2.5-flash` | LLM モデル。本プロジェクト推奨は `--model claude-sonnet-4-6`（`ANTHROPIC_API_KEY` 必須） |
+| `--model` | `gemma4:e4b` | ローカル LLM モデル（Ollama）。本プロジェクト推奨は `--model gemma4:e4b`（代替: `llama3.2`、API キー不要） |
 | `--use-celery` | `false` | Celery 並列処理を使用 |
 | `-c`, `--concurrency` | `8` | 並列タスク数 |
 | `--max-docs` | 全件（None） | 処理する最大文書数 |
@@ -273,9 +276,9 @@ uv run python qa_qdrant/make_qa_register_qdrant.py \
 | `--collection` | （必須） | Qdrant コレクション名 |
 | `--recreate` | `false` | コレクションを再作成（既存データ削除） |
 | `--batch-size` | `100` | Embedding バッチサイズ |
-| `--provider` | `gemini` | Embedding プロバイダー |
+| `--provider` | `ollama` | Embedding プロバイダー |
 
-> Embedding は既定で Gemini `gemini-embedding-001`（3072 次元）を使用します（`--provider gemini`）。
+> Embedding は既定で Ollama `nomic-embed-text`（768 次元）を使用します（`--provider ollama`）。
 
 **出力:**
 
@@ -322,7 +325,7 @@ uv run python qa_qdrant/make_qa_register_qdrant.py \
 ```bash
 uv run python qa_qdrant/register_to_qdrant.py \
   --input-file qa_output/pipeline/qa_pairs_cc_news_1per.csv \
-  --collection cc_news_1per \
+  --collection cc_news_1per_ollama \
   --recreate \
   --batch-size 100
 ```
@@ -343,7 +346,7 @@ uv run python qa_qdrant/register_to_qdrant.py \
 | `--create-ui-csv` / `--no-create-ui-csv` | 有効 | UI 用正規化 CSV を生成 |
 | `--ui-output-dir` | `qa_output` | UI 用 CSV の出力ディレクトリ |
 
-> Embedding は Gemini `gemini-embedding-001`（3072 次元）に固定です。
+> Embedding は Ollama `nomic-embed-text`（768 次元）に固定です。
 
 ---
 
@@ -399,7 +402,7 @@ streamlit run agent_rag.py --server.port 8501
 Agent 検索を利用するには、以下が必要です:
 
 - Docker コンテナ（Qdrant + Redis）が起動していること
-- `.env` に `GEMINI_API_KEY` / `GOOGLE_API_KEY` が設定されていること
+- Ollama が起動し、`gemma4:e4b`（または `llama3.2`）と `nomic-embed-text` が取得済みであること（`ollama list` で確認、API キー不要）
 - Qdrant に 1 つ以上のコレクションが登録されていること（ツール 2 で登録）
 
 ---
@@ -417,14 +420,14 @@ docker compose -f docker-compose/docker-compose.yml up -d
 uv run python -m chunking.csv_text_to_chunks_text_csv \
   --input-file OUTPUT/wikipedia_ja_1per.csv \
   --output output_chunked \
-  --model claude-haiku-4-5-20251001 \
+  --model gemma4:e4b \
   --workers 2
 
 # === Step 2: Q/A 生成 + Qdrant 登録 ===
 # ※ 固定ファイル名 {入力名}_chunks.csv を指定
 uv run python qa_qdrant/make_qa_register_qdrant.py \
   --input-file output_chunked/wikipedia_ja_1per_chunks.csv \
-  --collection wikipedia_ja_1per \
+  --collection wikipedia_ja_1per_ollama \
   --use-celery \
   --concurrency 8 \
   --recreate
@@ -455,6 +458,7 @@ docker compose -f docker-compose/docker-compose.yml down
 
 | バージョン | 日付 | 内容 |
 |-----------|------|------|
+| v1.3 | 2026-06-21 | Ollama ネイティブ化の表記統一。LLM をローカル `gemma4:e4b`（代替 `llama3.2`）、Embedding を Ollama `nomic-embed-text`（768次元・`--provider ollama`）に変更。API キー必須記述を撤廃し `ollama list` / `curl http://localhost:11434/api/tags`（任意 `OLLAMA_BASE_URL`）に置換。Qdrant コレクション例を `*_ollama` に統一。ローカル実行のため API コストは発生しない旨を明記。 |
 | v1.2 | 2026-06-17 | 現行コードに合わせて CLI フラグを刷新。チャンクツールの非実在フラグ（`--timestamp` / `--max-chunk-tokens` / `--continuity-mode`）を削除し、実在フラグ `--combine-rows` を追加。出力を 2 ファイル（manifest.json は生成されない）に訂正。Q/A 統合ツールから非実在の `--analyze-coverage` を削除し、`--batch-chunks` / `--provider` を追記。各ツールの argparse 既定モデルが `gemini-2.5-flash` であることを明記（本プロジェクト推奨は `--model claude-sonnet-4-6`）。 |
 | v1.1 | 2026-06-16 | 技術スタック表記を Anthropic Claude に統一（LLM: `claude-sonnet-4-6` / 軽量: `claude-haiku-4-5-20251001`、LLM 用 API キーは `ANTHROPIC_API_KEY`）。Embedding は Gemini `gemini-embedding-001`（3072次元）を維持。 |
 | v1.0 | 2026-06-12 | 初版。 |
