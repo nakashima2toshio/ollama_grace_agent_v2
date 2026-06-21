@@ -88,7 +88,7 @@ SmartQAGenerator.process_chunk()
 | **Q/A数範囲** | 0-5個（柔軟） | 2-8個（固定） |
 | **0個生成** | ✅ 可能（不要時スキップ） | ❌ 不可能 |
 | **処理速度** | 🐢 約2倍の時間 | ⚡ 高速 |
-| **API コスト** | 💰💰 約2倍 | 💰 低コスト |
+| **処理コスト** | ローカル実行のため API コストは発生しない（トークン集計のみ・LLM呼び出しは約2倍） | ローカル実行のため API コストは発生しない（トークン集計のみ） |
 | **品質** | ⭐⭐⭐ 高品質 | ⭐⭐ 標準 |
 | **トピック明示** | ✅ あり | ❌ なし |
 | **重要度考慮** | ✅ あり | ❌ なし |
@@ -140,7 +140,7 @@ SmartQAGenerator.process_chunk()
 |------|------------|---------|
 | **処理速度** | 低速（2倍の時間） | 高速 |
 | **API呼び出し** | 多い（2倍） | 少ない |
-| **コスト** | 高い（約2倍） | 低い |
+| **処理コスト** | ローカル実行のため API コストは発生しない（LLM呼び出しは約2倍） | ローカル実行のため API コストは発生しない |
 | **メモリ使用量** | やや高い（分析結果保持） | 標準 |
 
 ---
@@ -203,7 +203,7 @@ qa_pair = {
 | 長所 ✅ | 短所 ❌ |
 |--------|--------|
 | インテリジェント（内容を理解してQ/A数決定） | 低速（LLM呼び出し2回必要、処理時間が約2倍） |
-| 効率的（不要なQ/A生成を回避、0個生成も可能） | 高コスト（APIコストが約2倍） |
+| 効率的（不要なQ/A生成を回避、0個生成も可能） | LLM呼び出しが約2倍（ローカル実行のため API コストは発生しない） |
 | 高品質（主要トピックを確実にカバー、重要情報を優先） | 複雑性（デバッグが困難、エラーハンドリングが複雑） |
 | 豊富なメタデータ（トピックラベル、重要度スコア、複雑さ情報） | バッチ処理非対応（チャンクごとに分析が必要） |
 | 適応的（チャンクの特性に応じて変化、柔軟なQ/A数0-5個） | 不確実性（LLM判断に依存、分析結果のばらつき） |
@@ -279,7 +279,7 @@ qa_pair = {
 | 長所 ✅ | 短所 ❌ |
 |--------|--------|
 | 高速処理（LLM呼び出し1回のみ、トークンカウントのみで計算） | 非効率な生成（不要なチャンクからもQ/A生成、情報量に対して過剰/不足の可能性） |
-| 低コスト（APIコストが最小、大量データ処理に適している） | 品質のばらつき（重要度を考慮しない、トピックカバレッジの保証なし） |
+| 高速・軽量（LLM呼び出しが最小、大量データ処理に適している。ローカル実行のため API コストは発生しない） | 品質のばらつき（重要度を考慮しない、トピックカバレッジの保証なし） |
 | 安定性（シンプルなロジック、デバッグが容易） | 冗長性（低品質なQ/Aも生成される、後処理フィルタリングが必要） |
 | 後方互換性（既存システムと完全互換） | メタデータ不足（トピック情報なし、重要度スコアなし） |
 | バッチ処理対応（複数チャンクを一度に処理可能） | |
@@ -526,8 +526,8 @@ pipeline.run(
 
 | シナリオ | 理由 | コマンド例 |
 |---------|------|-----------|
-| **大規模データセット（10,000+チャンク）** | APIコスト最小化、処理時間短縮 | `python make_qa_register_qdrant.py --dataset wikipedia_ja --collection wiki --max-docs 50000 --no-smart-generation --use-celery --recreate` |
-| **コスト最適化が必要** | API呼び出しが半分、コストも約半分 | `python make_qa_register_qdrant.py --input-file large.csv --collection corpus --no-smart-generation --recreate` |
+| **大規模データセット（10,000+チャンク）** | LLM呼び出し最小化、処理時間短縮 | `python make_qa_register_qdrant.py --dataset wikipedia_ja --collection wiki --max-docs 50000 --no-smart-generation --use-celery --recreate` |
+| **処理量最適化が必要** | API呼び出しが半分（ローカル実行のため API コストは発生しない） | `python make_qa_register_qdrant.py --input-file large.csv --collection corpus --no-smart-generation --recreate` |
 | **高速処理が必要** | 処理時間が約半分 | `python make_qa_register_qdrant.py --input-file news.csv --collection news --no-smart-generation --use-celery --recreate` |
 | **安定性重視（本番環境）** | シンプルなロジック、デバッグが容易 | `python make_qa_register_qdrant.py --input-file prod.csv --collection prod --no-smart-generation --recreate` |
 | **バッチジョブ** | 高速・低コストが優先 | 従来方式 + Celery並列処理 |
@@ -574,7 +574,7 @@ class QAGenerator:
     def __init__(
         self,
         client: Optional[LLMClient] = None,
-        model: str = "gemini-2.0-flash",
+        model: str = "gemma4:e4b",
         use_smart_generation: bool = True  # ← デフォルトはTrue（スマート生成）
     ):
         self.use_smart_generation = use_smart_generation
@@ -619,7 +619,7 @@ def generate_for_chunk(self, chunk: Dict, config: Dict) -> List[Dict]:
 | **Q/A数決定** | LLMによる内容分析 | トークン数のみ |
 | **処理速度** | 低速（2倍） | 高速 |
 | **品質** | ⭐⭐⭐ 高品質 | ⭐⭐ 標準 |
-| **コスト** | 高い（2倍） | 低い |
+| **処理コスト** | LLM呼び出し2倍（API コストは発生しない） | LLM呼び出し最小（API コストは発生しない） |
 | **0個生成** | ✅ 可能 | ❌ 不可 |
 | **メタデータ** | 豊富（topic, importance, complexity） | 基本のみ |
 
@@ -649,6 +649,6 @@ def generate_for_chunk(self, chunk: Dict, config: Dict) -> List[Dict]:
 ---
 
 **作成日**: 2025-01-20
-**最終更新**: 2025-01-24
+**最終更新**: 2026-06-21
 **バージョン**: v2.2（スマート生成デフォルト対応版）
 **作成者**: AI Assistant

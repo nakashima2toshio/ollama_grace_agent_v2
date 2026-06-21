@@ -1,6 +1,6 @@
 # QAPipeline & SmartQAGenerator - Q/Aペア生成システム ドキュメント
 
-**Version 1.0** | 最終更新: 2025-01-30
+**Version 1.0** | 最終更新: 2026-06-21
 
 ---
 
@@ -29,7 +29,7 @@
 
 - チャンク済みCSVファイルの読み込みと検証
 - チャンクデータの分析とQ/A数の動的決定
-- LLM（Gemini API）を使用したQ/Aペアの生成
+- ローカルLLM（Ollama）を使用したQ/Aペアの生成
 - 生成結果の保存（CSV、JSONサマリー）
 - オプションでカバレージ分析の実行
 - Celery並列処理のサポート（オプション）
@@ -51,7 +51,7 @@
 
 ### 前提条件
 
-- `GOOGLE_API_KEY` 環境変数が設定されていること
+- Ollama がローカルで起動していること（APIキー不要・ローカル実行）。確認は `ollama list` または `curl http://localhost:11434/api/tags`。任意で `OLLAMA_BASE_URL` を設定可能
 - 入力CSVは既にチャンク済み（`csv_text_to_chunks_text_csv.py`で処理済み）
 - チャンクCSVには `text` または `Combined_Text` カラムが必要
 
@@ -77,8 +77,8 @@ flowchart TB
         CELERY[Celery Workers]
     end
 
-    subgraph EXTERNAL["外部サービス層"]
-        GEMINI[Gemini API]
+    subgraph EXTERNAL["ローカルLLM層"]
+        GEMINI["Ollama (ローカルLLM)"]
     end
 
     subgraph STORAGE["ストレージ層"]
@@ -95,6 +95,14 @@ flowchart TB
     SMART_GEN --> GEMINI
     INPUT --> QA_PIPE
     QA_PIPE --> OUTPUT
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class CLI,SCRIPT,QA_PIPE,SMART_GEN,CELERY,GEMINI,INPUT,OUTPUT default
+style CLIENT fill:#1a1a1a,stroke:#fff,color:#fff
+style PIPELINE fill:#1a1a1a,stroke:#fff,color:#fff
+style WORKER fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+style STORAGE fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 1.2 データフロー
@@ -110,6 +118,9 @@ flowchart LR
     G --> H[Q/Aペアリスト]
     H --> I[save]
     I --> J[CSV + JSON出力]
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D,E,F,G,H,I,J default
 ```
 
 ### 1.3 処理の流れ
@@ -168,6 +179,14 @@ flowchart TB
     GEN_QA -.-> CELERY_GEN
     SYNC --> EVAL
     EVAL --> SAVE
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class VALIDATE,LOAD_CFG,INIT_GEN,LOAD,CONVERT,GEN_QA,SYNC,CELERY_GEN,EVAL,SAVE,RUN_METHOD default
+style INIT fill:#1a1a1a,stroke:#fff,color:#fff
+style DATA fill:#1a1a1a,stroke:#fff,color:#fff
+style GENERATE fill:#1a1a1a,stroke:#fff,color:#fff
+style OUTPUT fill:#1a1a1a,stroke:#fff,color:#fff
+style RUN fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 2.2 SmartQAGenerator 内部構成
@@ -195,14 +214,20 @@ flowchart TB
     PROCESS --> ANALYZE_CHUNK
     ANALYZE_CHUNK --> GEN_QA
     GEN_QA --> PROCESS
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class INIT_CLIENT,GEN_CONTENT,ANALYZE_CHUNK,GEN_QA,PROCESS default
+style INIT fill:#1a1a1a,stroke:#fff,color:#fff
+style ANALYZE fill:#1a1a1a,stroke:#fff,color:#fff
+style GENERATE fill:#1a1a1a,stroke:#fff,color:#fff
+style COMBINED fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 2.3 外部依存関係
 
 | ライブラリ | バージョン | 用途 |
 |-----------|-----------|------|
-| `google-genai` | 最新 | Gemini API（新API） |
-| `google-generativeai` | フォールバック | Gemini API（旧API） |
+| `ollama` | 最新 | ローカルLLM（Ollama）クライアント |
 | `pandas` | - | DataFrame処理 |
 | `pathlib` | 標準 | パス操作 |
 
@@ -269,7 +294,7 @@ Q/A生成パイプライン全体を制御するクラス。チャンク済みCS
 QAPipeline(
     dataset_name: Optional[str] = None,
     input_file: Optional[str] = None,
-    model: str = "gemini-2.0-flash",
+    model: str = "gemma4:e4b",
     output_dir: str = "qa_output/pipeline",
     max_docs: Optional[int] = None,
     client: Optional[LLMClient] = None
@@ -280,7 +305,7 @@ QAPipeline(
 |------------|------|-----------|------|
 | `dataset_name` | Optional[str] | None | 事前定義データセット名（cc_news, wikipedia_ja等） |
 | `input_file` | Optional[str] | None | チャンク済みCSVファイルのパス |
-| `model` | str | "gemini-2.0-flash" | 使用するGeminiモデル |
+| `model` | str | "gemma4:e4b" | 使用するOllamaモデル（代替: `llama3.2`） |
 | `output_dir` | str | "qa_output/pipeline" | 出力ディレクトリ |
 | `max_docs` | Optional[int] | None | 処理する最大チャンク数 |
 | `client` | Optional[LLMClient] | None | LLMクライアント（DI用） |
@@ -459,24 +484,24 @@ def run(
 
 #### コンストラクタ: `__init__`
 
-**概要**: SmartQAGeneratorを初期化し、Gemini APIクライアントを準備する。
+**概要**: SmartQAGeneratorを初期化し、Ollamaクライアント（`create_llm_client("ollama")`）を準備する。
 
 ```python
 SmartQAGenerator(
-    model: str = "gemini-2.0-flash",
+    model: str = "gemma4:e4b",
     api_key: Optional[str] = None
 )
 ```
 
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
-| `model` | str | "gemini-2.0-flash" | 使用するGeminiモデル |
-| `api_key` | Optional[str] | None | API Key（Noneの場合は環境変数から取得） |
+| `model` | str | "gemma4:e4b" | 使用するOllamaモデル（代替: `llama3.2`） |
+| `api_key` | Optional[str] | None | 未使用（Ollamaはローカル実行のためキー不要） |
 
 | 項目 | 内容 |
 |------|------|
-| **Input** | `model`, `api_key`（オプション） |
-| **Process** | 1. 新API（google.genai）を優先的に使用<br>2. 旧API（google.generativeai）にフォールバック<br>3. クライアントを初期化 |
+| **Input** | `model`, `api_key`（未使用） |
+| **Process** | 1. `create_llm_client("ollama", default_model=model)` でローカルLLMクライアントを初期化<br>2. JSON mode 構造化出力を利用する準備をする |
 | **Output** | `SmartQAGenerator`インスタンス |
 
 ---
@@ -601,7 +626,7 @@ def process_chunk(self, chunk_text: str) -> Dict
 
 ```python
 # 使用例
-generator = SmartQAGenerator(model="gemini-2.0-flash")
+generator = SmartQAGenerator(model="gemma4:e4b")
 result = generator.process_chunk("チャンクテキスト...")
 
 if result['success']:
@@ -686,7 +711,7 @@ def analyze_qa_statistics(results: List[Dict]) -> Dict
 
 | 設定項目 | 値 | 説明 |
 |---------|-----|------|
-| デフォルトモデル | `gemini-2.0-flash` | 使用するGeminiモデル |
+| デフォルトモデル | `gemma4:e4b` | 使用するOllamaモデル（代替: `llama3.2`） |
 | 分析時temperature | 0.1 | 分析プロンプトの温度 |
 | 生成時temperature | 0.3 | Q/A生成プロンプトの温度 |
 | Q/A数範囲 | 0-5 | 1チャンクあたりの生成Q/A数 |
@@ -701,7 +726,7 @@ def analyze_qa_statistics(results: List[Dict]) -> Dict
 from qa_generation.smart_qa_generator import SmartQAGenerator
 
 # 初期化
-generator = SmartQAGenerator(model="gemini-2.0-flash")
+generator = SmartQAGenerator(model="gemma4:e4b")
 
 # チャンクテキスト
 chunk_text = """
@@ -728,7 +753,7 @@ from qa_generation.pipeline import QAPipeline
 # パイプライン初期化
 pipeline = QAPipeline(
     input_file="output_chunked/data_chunks.csv",
-    model="gemini-2.0-flash",
+    model="gemma4:e4b",
     output_dir="qa_output/pipeline",
     max_docs=10  # テスト用に制限
 )
@@ -798,6 +823,7 @@ print(f"保存先: {saved_files['qa_csv']}")
 | バージョン | 変更内容 |
 |-----------|---------|
 | 1.0 | 初版作成（QAPipeline v3.0、SmartQAGenerator v2.5 対応） |
+| 1.0 (2026-06-21) | Ollama ネイティブ化の表記統一・Mermaid §7 スタイル整備 |
 
 ---
 
@@ -840,6 +866,12 @@ flowchart LR
     PIPELINE --> DATA_IO
     PIPELINE --> EVAL
     PIPELINE --> CELERY
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class PIPELINE,SYS,LOGGING,TYPING,PATHLIB,PANDAS,CONFIG,HELPER_LLM,SMART_GEN,DATA_IO,EVAL,CELERY default
+style STDLIB fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+style INTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### A.2 SmartQAGenerator 依存関係
@@ -854,16 +886,21 @@ flowchart LR
         TYPING[typing]
     end
 
-    subgraph EXTERNAL["外部ライブラリ"]
-        GENAI_NEW[google.genai]
-        GENAI_OLD[google.generativeai]
+    subgraph EXTERNAL["内部/外部モジュール"]
+        GENAI_NEW["helper.helper_llm.create_llm_client"]
+        GENAI_OLD["ollama (ローカルLLMクライアント)"]
     end
 
     SMART_GEN --> JSON
     SMART_GEN --> LOGGING
     SMART_GEN --> TYPING
     SMART_GEN --> GENAI_NEW
-    SMART_GEN -.->|フォールバック| GENAI_OLD
+    GENAI_NEW --> GENAI_OLD
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class SMART_GEN,JSON,LOGGING,TYPING,GENAI_NEW,GENAI_OLD default
+style STDLIB fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ---
@@ -901,6 +938,9 @@ flowchart TD
     SAVE --> RESULT[結果を返す]
     RESULT --> END([終了])
     ERROR1 --> END
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class START,LOAD,CONVERT,CHECK_CHUNKS,ERROR1,GEN_QA,CHECK_CELERY,CELERY,SYNC,CHECK_QA,WARN,COVERAGE,EVAL,SKIP_EVAL,SAVE,RESULT,END default
 ```
 
 ### B.2 SmartQAGenerator.process_chunk() フローチャート
@@ -918,4 +958,7 @@ flowchart TD
     
     RESULT --> RETURN[Dict を返す]
     RETURN --> END([終了])
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class START,ANALYZE,CHECK_COUNT,SKIP,GENERATE,RESULT,RETURN,END default
 ```

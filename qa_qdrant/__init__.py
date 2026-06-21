@@ -65,8 +65,8 @@ def main():
     parser.add_argument(
         "--model",
         type=str,
-        default="gemini-2.0-flash",
-        help="使用するGeminiモデル"
+        default="gemma4:e4b",
+        help="使用するOllamaモデル"
     )
     parser.add_argument(
         "--output",
@@ -165,10 +165,7 @@ def main():
 
     args = parser.parse_args()
 
-    # APIキー確認
-    if not os.getenv("GOOGLE_API_KEY"):
-        logger.error("GOOGLE_API_KEYが設定されていません")
-        sys.exit(1)
+    # Ollama はローカル実行のため API キーは不要（接続先は任意で OLLAMA_BASE_URL）
 
     # ================================================================
     # ✅ 改修ポイント: input_chunks のログ表示

@@ -1,6 +1,6 @@
 # make_qa.py - Q/Aペア生成 CLIエントリーポイント ドキュメント
 
-**Version 2.1** | 最終更新: 2025-02-07
+**Version 2.1** | 最終更新: 2026-06-21
 
 ---
 
@@ -28,7 +28,6 @@
 
 - CLI引数の解析と検証（入力ソース・モデル・並列処理等）
 - 入力ファイルの存在確認・形式検証（CSV限定）
-- 環境変数（`GOOGLE_API_KEY`）の存在確認
 - `QAPipeline`の初期化と実行の制御
 - 実行結果のサマリーログ出力
 
@@ -41,7 +40,7 @@
 ### 前提条件
 
 - 入力CSVは既にチャンク済み（`csv_text_to_chunks_text_csv.py`で処理済み）
-- `GOOGLE_API_KEY` 環境変数が設定されていること
+- Ollama がローカルで起動していること（`ollama list` で確認。`OLLAMA_BASE_URL` で接続先指定可）。APIキーは不要（ローカル実行）
 
 ---
 
@@ -70,12 +69,12 @@ flowchart TB
     end
 
     subgraph EXTERNAL["外部サービス層"]
-        GEMINI[Gemini API]
+        GEMINI["Ollama API（ローカルLLM）"]
     end
 
     subgraph STORAGE["ストレージ層"]
-        INPUT_CSV[チャンク済みCSV]
-        OUTPUT[qa_output/pipeline]
+        INPUT_CSV["チャンク済みCSV"]
+        OUTPUT["qa_output/pipeline"]
     end
 
     USER --> TERMINAL
@@ -87,14 +86,23 @@ flowchart TB
     SMART_GEN --> GEMINI
     INPUT_CSV --> MAIN
     QA_PIPELINE --> OUTPUT
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class USER,TERMINAL,MAIN,QA_PIPELINE,SMART_GEN,CELERY,GEMINI,INPUT_CSV,OUTPUT default
+style CLI fill:#1a1a1a,stroke:#fff,color:#fff
+style ENTRY fill:#1a1a1a,stroke:#fff,color:#fff
+style PIPELINE fill:#1a1a1a,stroke:#fff,color:#fff
+style WORKER fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+style STORAGE fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 1.2 データフロー
 
 1. ユーザーがCLI引数を指定して`make_qa.py`を実行
-2. `main()`が引数を解析し、入力ファイル/データセット・APIキーを検証
+2. `main()`が引数を解析し、入力ファイル/データセットを検証（APIキーは不要・ローカル実行）
 3. `QAPipeline`を初期化し、`pipeline.run()`を実行
-4. パイプラインがCSVを読み込み、Gemini APIを呼び出してQ/Aペアを生成
+4. パイプラインがCSVを読み込み、Ollama API（ローカルLLM）を呼び出してQ/Aペアを生成
 5. 結果を`qa_output/pipeline`ディレクトリに保存
 6. サマリー（生成Q/A数、カバレージ率等）をログ出力
 
@@ -126,7 +134,7 @@ flowchart TB
 | # | 処理ブロック | 概要 | 行範囲 | 主な処理内容 |
 |:-:|-------------|------|:------:|-------------|
 | 1 | 引数解析 | CLI引数の定義と解析 | 60-183 | `argparse`で6カテゴリの引数を定義し`parse_args()`で解析 |
-| 2 | APIキー確認 | 環境変数チェック | 188-190 | `GOOGLE_API_KEY`未設定時に`sys.exit(1)` |
+| 2 | （APIキー確認なし） | Ollama ローカル実行のためキー検証は不要 | - | APIキーチェックは撤去済み（ローカル実行） |
 | 3 | 入力ファイル検証 | ファイル存在・形式チェック | 195-205 | ファイル存在確認、`.csv`拡張子チェック |
 | 4 | 設定ログ表示 | 実行設定のログ出力 | 210-233 | 入力ソース・モデル・生成モード・並列設定をログ表示 |
 | 5 | パイプライン実行 | Q/A生成の実行 | 239-258 | `QAPipeline`初期化 → `pipeline.run()`実行 |
@@ -156,16 +164,16 @@ flowchart TB
 ```mermaid
 flowchart TB
     subgraph CONST["定数・設定"]
-        PROJECT_ROOT[PROJECT_ROOT]
+        PROJECT_ROOT["PROJECT_ROOT"]
     end
 
     subgraph MAIN_FLOW["main 処理フロー"]
-        ARGPARSE[1. 引数解析]
-        VALIDATE_KEY[2. APIキー確認]
-        VALIDATE_FILE[3. 入力ファイル検証]
-        LOG_CONFIG[4. 設定ログ出力]
-        INIT_PIPE[5. QAPipeline 初期化・実行]
-        LOG_RESULT[6. 結果ログ出力]
+        ARGPARSE["1. 引数解析"]
+        VALIDATE_KEY["2. 入力検証準備（APIキー不要）"]
+        VALIDATE_FILE["3. 入力ファイル検証"]
+        LOG_CONFIG["4. 設定ログ出力"]
+        INIT_PIPE["5. QAPipeline 初期化・実行"]
+        LOG_RESULT["6. 結果ログ出力"]
     end
 
     CONST --> MAIN_FLOW
@@ -174,6 +182,11 @@ flowchart TB
     VALIDATE_FILE --> LOG_CONFIG
     LOG_CONFIG --> INIT_PIPE
     INIT_PIPE --> LOG_RESULT
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class PROJECT_ROOT,ARGPARSE,VALIDATE_KEY,VALIDATE_FILE,LOG_CONFIG,INIT_PIPE,LOG_RESULT default
+style CONST fill:#1a1a1a,stroke:#fff,color:#fff
+style MAIN_FLOW fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 3.2 外部依存関係
@@ -213,7 +226,7 @@ def main() -> None
 | 項目 | 内容 |
 |------|------|
 | **Input** | CLI引数（`sys.argv`経由）: `--dataset` or `--input-file`, `--model`, `--output`, `--max-docs`, `--use-celery`, `-c`, `--batch-chunks`, `--use-smart-generation` / `--no-smart-generation`, `--analyze-coverage`, `--coverage-threshold`, `--celery-workers` |
-| **Process** | 1. `argparse`で引数を解析（入力ソースは排他的必須）<br>2. `GOOGLE_API_KEY`環境変数の存在を確認<br>3. 入力ファイルの存在・拡張子（`.csv`限定）を検証<br>4. 設定内容（入力・モデル・生成モード・並列設定）をログ出力<br>5. `QAPipeline`を初期化（`dataset_name`, `input_file`, `model`, `output_dir`, `max_docs`）<br>6. `pipeline.run()`を実行（Celery/同期、スマート生成等の設定を渡す）<br>7. 結果サマリー（ファイルパス、Q/A数、カバレージ率）をログ出力<br>8. エラー発生時はトレースバック表示＋`sys.exit(1)` |
+| **Process** | 1. `argparse`で引数を解析（入力ソースは排他的必須）<br>2. APIキー確認は不要（Ollama ローカル実行）<br>3. 入力ファイルの存在・拡張子（`.csv`限定）を検証<br>4. 設定内容（入力・モデル・生成モード・並列設定）をログ出力<br>5. `QAPipeline`を初期化（`dataset_name`, `input_file`, `model`, `output_dir`, `max_docs`）<br>6. `pipeline.run()`を実行（Celery/同期、スマート生成等の設定を渡す）<br>7. 結果サマリー（ファイルパス、Q/A数、カバレージ率）をログ出力<br>8. エラー発生時はトレースバック表示＋`sys.exit(1)` |
 | **Output** | `None`（標準出力へのログ出力。ファイル出力は`QAPipeline`が担当） |
 
 **終了コード**:
@@ -221,7 +234,7 @@ def main() -> None
 | コード | 条件 |
 |--------|------|
 | `0` | 正常終了 |
-| `1` | `GOOGLE_API_KEY`未設定 / 入力ファイル不在 / CSV以外の入力 / 実行時エラー |
+| `1` | 入力ファイル不在 / CSV以外の入力 / 実行時エラー |
 
 ```python
 # 使用例（コマンドラインから実行）
@@ -259,7 +272,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 | 項目 | デフォルト値 | 説明 |
 |------|-------------|------|
-| `--model` | `gemini-3.0-flash` | 使用するGeminiモデル |
+| `--model` | `gemma4:e4b` | 使用するLLMモデル（Ollama、代替: `llama3.2`） |
 | `--output` | `{PROJECT_ROOT}/qa_output/pipeline` | 出力ディレクトリ |
 | `--batch-chunks` | `3` | 1回のAPIで処理するチャンク数（1-5） |
 | `--concurrency` | `8` | 並列タスク数 |
@@ -333,6 +346,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 | 2.0 | `a_class_method_md_format.md`フォーマット仕様に準拠して全面再作成 |
 | 2.1 | 「2. クラス・関数一覧表」セクションを追加（名称・概要・構成の一覧表、`main()`内部構成、引数定義カテゴリ）。セクション番号を再採番 |
 | 3.0 | pipeline.py v3.0対応。`--input-chunks`を`--input-file`に統一。チャンク関連引数を削除。`-c, --concurrency`引数を追加。`--use-smart-generation` / `--no-smart-generation`引数を追加 |
+| 2026-06-21 | Ollama ネイティブ化の表記統一・Mermaid §7 スタイル整備 |
 
 ---
 
@@ -363,6 +377,11 @@ flowchart LR
 
     PIPELINE --> QA_PIPE[QAPipeline]
     CONFIG --> DATASET[DATASET_CONFIGS]
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class MAKE_QA,SYS,OS,ARGPARSE,LOGGING,PIPELINE,CONFIG,QA_PIPE,DATASET default
+style STDLIB fill:#1a1a1a,stroke:#fff,color:#fff
+style INTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ---
@@ -372,9 +391,9 @@ flowchart LR
 ```mermaid
 flowchart TD
     START([開始]) --> PARSE[1. 引数解析]
-    PARSE --> CHECK_KEY{2. GOOGLE_API_KEY?}
-    CHECK_KEY -->|未設定| ERROR1[エラー終了]
-    CHECK_KEY -->|設定済| CHECK_FILE{3. 入力ファイル指定?}
+    PARSE --> CHECK_KEY{2. Ollama 利用可能?（APIキー不要）}
+    CHECK_KEY -->|未起動| ERROR1[エラー終了]
+    CHECK_KEY -->|起動済| CHECK_FILE{3. 入力ファイル指定?}
 
     CHECK_FILE -->|dataset指定| LOG_CONFIG[4. 設定ログ出力]
     CHECK_FILE -->|input-file指定| VALIDATE_FILE{3. ファイル検証}
@@ -394,6 +413,9 @@ flowchart TD
     ERROR2 --> EXIT1
     ERROR3 --> EXIT1
     ERROR4 --> EXIT1
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class START,PARSE,CHECK_KEY,ERROR1,CHECK_FILE,LOG_CONFIG,VALIDATE_FILE,ERROR2,ERROR3,INIT,CHECK_RESULT,ERROR4,LOG_RESULT,END,EXIT1 default
 ```
 
 ---
@@ -413,7 +435,7 @@ flowchart TD
 
 | 引数 | 型 | デフォルト | 説明 |
 |------|------|-----------|------|
-| `--model` | str | `gemini-3.0-flash` | 使用するGeminiモデル |
+| `--model` | str | `gemma4:e4b` | 使用するLLMモデル（Ollama、代替: `llama3.2`） |
 | `--output` | str | `{PROJECT_ROOT}/qa_output/pipeline` | 出力ディレクトリ |
 | `--max-docs` | int | `None` | 処理する最大チャンク数 |
 

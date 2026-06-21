@@ -78,7 +78,7 @@ Qdrant登録:
 --batch-size        Embeddingバッチサイズ（デフォルト: 100）
 
 Q/A生成:
---model             LLMモデル（デフォルト: gpt-5.4-mini）
+--model             LLMモデル（デフォルト: gemma4:e4b）
 --use-celery        Celery並列処理を使用
 -c, --concurrency   並列タスク数（デフォルト: 8）
 --batch-chunks      1回のAPIで処理するチャンク数（デフォルト: 3）
@@ -418,8 +418,8 @@ def main():
     group_gen.add_argument(
         "--model",
         type=str,
-        default="gpt-5.4-mini",
-        help="使用するLLMモデル（デフォルト: gpt-5.4-mini）"
+        default="gemma4:e4b",
+        help="使用するLLMモデル（デフォルト: gemma4:e4b）"
     )
     group_gen.add_argument(
         "--max-docs",
@@ -522,7 +522,6 @@ def main():
         logger.error("--dataset, --input-file は同時に指定できません")
         sys.exit(1)
 
-    # [MIGRATION openai→ollama] OPENAI_API_KEY チェック削除
     # Ollama はローカル実行のため API キー不要
 
     # Q/A生成モードのログ表示（SmartQAGenerator に一本化済み）

@@ -305,7 +305,7 @@ python make_qa.py \
 
 **具体例:**
 - **チャンク作成（csv_to_chunks_text_para.py）**
-  - Gemini API呼び出しが主要処理
+  - Ollama API 呼び出しが主要処理
   - I/O待機時間が長い
   - 数百〜数千のAPI呼び出し
 
@@ -361,7 +361,7 @@ python make_qa.py \
 
 ---
 
-### **ベンチマーク（Gemini API呼び出し）**
+### **ベンチマーク（Ollama API（OpenAI互換）呼び出し）**
 
 ```python
 # asyncio版
