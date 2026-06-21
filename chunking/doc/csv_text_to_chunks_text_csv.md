@@ -1,6 +1,6 @@
 ## csv_text_to_chunks_text_csv.py - LLMベースセマンティックチャンキング ドキュメント
 
-**Version 1.4** | 最終更新: 2025-02-05
+**Version 1.5** | 最終更新: 2026-06-21
 
 ---
 
@@ -87,7 +87,7 @@ flowchart TB
     end
 
     subgraph EXTERNAL["外部サービス層"]
-        GEMINI[Google Gemini API]
+        GEMINI[Ollama API]
         FS[ファイルシステム]
     end
 
@@ -111,6 +111,15 @@ flowchart TB
     SAVE_CSV --> FS
     SAVE_TXT --> FS
     CHECKPOINT --> FS
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class CLI,IMPORT,MAIN,STEP1,STEP2,STEP3,LOAD,SAVE_CSV,SAVE_TXT,API_CLIENT,CHECKPOINT,MODELS,PROMPTS,UTILS,GEMINI,FS default
+style CLIENT fill:#1a1a1a,stroke:#fff,color:#fff
+style MODULE fill:#1a1a1a,stroke:#fff,color:#fff
+style PIPELINE fill:#1a1a1a,stroke:#fff,color:#fff
+style IO fill:#1a1a1a,stroke:#fff,color:#fff
+style INTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 処理フロー全体図 - システム全体の流れ
@@ -140,6 +149,9 @@ graph TB
 
     N --> O[CSV保存]
     O --> P[出力ファイル]
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P default
 ```
 
 ### 1.2 データフロー
@@ -192,6 +204,14 @@ flowchart TB
     S1_OUT --> S2_IN
     S2_OUT --> S3_IN
     S3_OUT --> CSV
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class TEXT,S1_PRE,S1_IN,S1_LLM,S1_POST,S1_OUT,S2_IN,S2_LLM,S2_OUT,S3_IN,S3_LLM,S3_OUT,CSV default
+style INPUT fill:#1a1a1a,stroke:#fff,color:#fff
+style STEP1 fill:#1a1a1a,stroke:#fff,color:#fff
+style STEP2 fill:#1a1a1a,stroke:#fff,color:#fff
+style STEP3 fill:#1a1a1a,stroke:#fff,color:#fff
+style OUTPUT fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ---
@@ -244,6 +264,13 @@ flowchart TB
 
     SAVE_CSV --> NORM
     SAVE_CSV --> SPLIT
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class CHUNKS_ALL,MAIN,STEP1,STEP2,STEP3,LOAD_CSV,SAVE_CSV,SAVE_TXT,GEN_NAME,NORM,SPLIT,PREPROC,POSTPROC default
+style MAIN_FUNC fill:#1a1a1a,stroke:#fff,color:#fff
+style PIPELINE fill:#1a1a1a,stroke:#fff,color:#fff
+style IO_FUNC fill:#1a1a1a,stroke:#fff,color:#fff
+style UTIL_FUNC fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 2.2 外部依存関係
@@ -270,7 +297,7 @@ flowchart TB
 
 | モジュール | インポート | 用途 |
 |-----------|-----------|------|
-| `chunking.async_api_client` | `AsyncAPIClient` | Gemini API非同期クライアント |
+| `chunking.async_api_client` | `AsyncAPIClient` | Ollama API（OpenAI互換）非同期クライアント |
 | `chunking.checkpoint_manager` | `CheckpointManager` | チェックポイント保存・読込 |
 | `chunking.models` | `StructuralResult`, `ContinuityResult` | Pydanticスキーマ |
 | `chunking.prompts` | `PARAGRAPH_SEPARATION_PROMPT`, `SEMANTIC_CHUNKING_PROMPT`, `CONTINUITY_CHECK_PROMPT` | LLMプロンプト |
@@ -317,7 +344,7 @@ flowchart TB
 ```python
 async def chunks_all_async(
     text: str,
-    model: str = "gemini-3-flash-preview",
+    model: str = "gemma4:e4b",
     max_workers: int = 8,
     block_size: int = 1000,
     checkpoint_manager: Optional[CheckpointManager] = None,
@@ -330,7 +357,7 @@ async def chunks_all_async(
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
 | `text` | str | - | 入力テキスト |
-| `model` | str | "gemini-3-flash-preview" | 使用するLLMモデル名 |
+| `model` | str | "gemma4:e4b" | 使用するLLMモデル名 |
 | `max_workers` | int | 8 | 並列ワーカー数（Semaphore制御） |
 | `block_size` | int | 1000 | Step1のブロックサイズ（文字数） |
 | `checkpoint_manager` | Optional[CheckpointManager] | None | チェックポイント管理（省略時は自動生成） |
@@ -341,7 +368,7 @@ async def chunks_all_async(
 | 項目 | 内容 |
 |------|------|
 | **Input** | `text: str`, `model: str`, `max_workers: int`, `block_size: int`, `checkpoint_manager`, `output_file`, `dataset_type`, `source_file` |
-| **Process** | 1. 環境変数`GOOGLE_API_KEY`を取得<br>2. `AsyncAPIClient`を初期化<br>3. Step1: `_step1_hierarchical_split()`で階層構造化<br>4. Step2: `_step2_semantic_chunking()`で意味的分割<br>5. Step3: `_step3_continuity_check()`で連続性チェック<br>6. `output_file`指定時は`save_chunks_as_csv()`または`save_chunks_as_text()`で保存 |
+| **Process** | 1. Ollama 接続先（任意で `OLLAMA_BASE_URL`）を解決（APIキー不要）<br>2. `AsyncAPIClient`を初期化<br>3. Step1: `_step1_hierarchical_split()`で階層構造化<br>4. Step2: `_step2_semantic_chunking()`で意味的分割<br>5. Step3: `_step3_continuity_check()`で連続性チェック<br>6. `output_file`指定時は`save_chunks_as_csv()`または`save_chunks_as_text()`で保存 |
 | **Output** | `List[str]`: 最終チャンクのリスト |
 
 **戻り値例**:
@@ -354,7 +381,7 @@ async def chunks_all_async(
 ]
 ```
 
-> 📝 **注意**: 環境変数`GOOGLE_API_KEY`が設定されていない場合、`ValueError`が発生します。
+> 📝 **注意**: Ollama サーバが起動していない場合は接続エラーになります（APIキー不要）。
 
 ```python
 # 使用例
@@ -366,7 +393,7 @@ async def main():
 
     chunks = await chunks_all_async(
         text=text,
-        model="gemini-3-flash-preview",
+        model="gemma4:e4b",
         max_workers=8,
         output_file="output/chunks.csv",
         dataset_type="wikipedia"
@@ -832,7 +859,7 @@ async def main() -> None
 |------|-----|-----------|------|
 | `--input-file` | str | (必須) | 入力ファイル（.txt, .csv） |
 | `--output` | str | "chunks_output" | 出力ディレクトリ |
-| `--model` | str | "gemini-3-flash-preview" | LLMモデル名 |
+| `--model` | str | "gemma4:e4b" | LLMモデル名 |
 | `--workers` | int | 8 | 並列ワーカー数 |
 | `--block-size` | int | 1000 | バッチサイズ（文字数）※大きすぎるとMAX_TOKENSエラーが発生 |
 | `--verbose` | flag | False | 詳細ログ出力 |
@@ -849,7 +876,7 @@ async def main() -> None
 
 | 設定 | デフォルト値 | 説明 |
 |-----|-------------|------|
-| `model` | "gemini-3-flash-preview" | 使用するLLMモデル |
+| `model` | "gemma4:e4b" | 使用するLLMモデル |
 | `max_workers` | 8 | 並列ワーカー数 |
 | `block_size` | 1000 | Step1のブロックサイズ（文字数）※v1.4で2000→1000に変更 |
 | `max_output_tokens` | 16384 | AsyncAPIClientの出力トークン制限 ※v1.4で4096→16384に変更 |
@@ -872,7 +899,7 @@ text_candidates = [
 
 | 環境変数 | 必須 | 説明 |
 |---------|:----:|------|
-| `GOOGLE_API_KEY` | ✅ | Google Gemini APIキー |
+| `OLLAMA_BASE_URL` | （不要） | APIキーは不要（ローカル実行）。任意で Ollama 接続先を指定（既定 `http://localhost:11434/v1`） |
 
 ---
 
@@ -885,7 +912,7 @@ text_candidates = [
 python -m chunking.csv_text_to_chunks_text_csv \
   --input-file OUTPUT/cc_news_5per.csv \
   --output output_chunked \
-  --model gemini-3-flash-preview \
+  --model gemma4:e4b \
   --workers 4 \
   --text-column text \
   --combine-rows \
@@ -895,7 +922,7 @@ python -m chunking.csv_text_to_chunks_text_csv \
 python -m chunking.csv_text_to_chunks_text_csv \
   --input-file ./data/document.txt \
   --output chunks_output \
-  --model gemini-3-flash-preview \
+  --model gemma4:e4b \
   --workers 8
 
 # 詳細ログ付きで実行
@@ -926,7 +953,7 @@ async def process_csv():
     # 2. チャンキング処理
     chunks = await chunks_all_async(
         text=text,
-        model="gemini-3-flash-preview",
+        model="gemma4:e4b",
         max_workers=8,
         block_size=1000
     )
@@ -1005,11 +1032,12 @@ __all__ = [
 
 | バージョン | 変更内容 |
 |-----------|---------|
+| 1.5 (2026-06-21) | Ollama ネイティブ化（Gemini→Ollama 表記/モデル/依存の全面置換）。デフォルトモデルを`gemma4:e4b`に、依存を`openai`（Ollama互換）に、APIキー不要（ローカル実行）に変更 |
 | 1.0 | 初版作成（`chunks_all_async()`） |
 | 1.1 | チェックポイント機能追加 |
 | 1.2 | CSV入力対応（`load_text_from_csv()`）、CSV出力機能追加（`save_chunks_as_csv()`）、改行正規化対応、出力ファイル名自動生成機能追加 |
 | 1.3 | Step1に前処理・後処理機能を追加（`_preprocess_text()`, `_postprocess_paragraph()`）、`regex_string.chunk_text`を使用した日本語・英語対応の文分割、改行のない長いテキストの処理精度向上 |
-| 1.4 | デフォルトモデルを`gemini-3-flash-preview`に変更、`block_size`を2000→1000に変更（MAX_TOKENS対策）、`max_output_tokens`を4096→16384に変更 |
+| 1.4 | デフォルトモデルを`gemma4:e4b`に変更、`block_size`を2000→1000に変更（MAX_TOKENS対策）、`max_output_tokens`を4096→16384に変更 |
 
 ---
 
@@ -1043,7 +1071,7 @@ flowchart LR
     end
 
     subgraph SERVICE["外部サービス"]
-        GEMINI[Google Gemini API]
+        GEMINI[Ollama API]
     end
 
     CSV_CHUNKS --> API_CLIENT
@@ -1066,7 +1094,14 @@ flowchart LR
     API_CLIENT --> GEMINI
 
     MODELS --> PYDANTIC[pydantic]
-    API_CLIENT --> GOOGLE_GENAI[google-genai]
+    API_CLIENT --> GOOGLE_GENAI[openai (Ollama互換)]
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class CSV_CHUNKS,API_CLIENT,CHECKPOINT,MODELS,PROMPTS,UTILS,REGEX_STRING,PANDAS,TIKTOKEN,TQDM,ASYNCIO,ARGPARSE,LOGGING,PATHLIB,RE,GEMINI,PYDANTIC,GOOGLE_GENAI default
+style INTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+style STDLIB fill:#1a1a1a,stroke:#fff,color:#fff
+style SERVICE fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ---
@@ -1102,6 +1137,9 @@ flowchart TB
     SAVE_CSV --> END(["完了"])
     SAVE_TXT --> END
     RETURN --> END
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class START,INPUT,LOAD_CSV,LOAD_TXT,TEXT,PREPROC,STEP1,POSTPROC,CP1,STEP2,CP2,STEP3,CP3,OUTPUT,SAVE_CSV,SAVE_TXT,RETURN,END default
 ```
 
 ### チェックポイント再開フロー
@@ -1123,4 +1161,7 @@ flowchart TB
     LOAD2 --> STEP3["Step3から再開"]
     LOAD1 --> STEP2["Step2から再開"]
     FULL --> STEP1["Step1から開始"]
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class START,CHECK1,LOAD3,CHECK2,LOAD2,CHECK3,LOAD1,FULL,DONE,STEP3,STEP2,STEP1 default
 ```

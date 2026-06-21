@@ -1,7 +1,7 @@
 # models.py
 """
 Pydanticモデル定義
-Gemini APIのレスポンススキーマとして使用
+Ollama（OpenAI 互換 API）の JSON mode レスポンススキーマとして使用
 """
 
 from typing import List

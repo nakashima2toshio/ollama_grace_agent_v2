@@ -1,7 +1,7 @@
 # prompts.py
 """
-OpenAI API用プロンプト定義（改修版）
-[MIGRATION] Gemini API → OpenAI API
+Ollama 用プロンプト定義
+- Ollama（OpenAI 互換 API）の JSON mode に向けた構造化出力プロンプト
 """
 
 # プロンプト 1: 階層分割（改修版）

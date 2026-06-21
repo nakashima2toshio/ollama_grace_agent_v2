@@ -1,6 +1,6 @@
 # step1_2.py - Step1 + Step2 統合実行スクリプト ドキュメント
 
-**Version 1.1** | 最終更新: 2025-02-05
+**Version 1.2** | 最終更新: 2026-06-21
 
 ---
 
@@ -26,9 +26,9 @@
 ### 主な責務
 
 - テキストの前処理（長い1行を適切に分割）
-- Gemini APIを使用した段落単位への分割（Step1）
+- Ollama API（OpenAI互換）を使用した段落単位への分割（Step1）
 - 段落の後処理（句読点で文を分割）
-- Gemini APIを使用した意味的チャンク分割（Step2）
+- Ollama API（OpenAI互換）を使用した意味的チャンク分割（Step2）
 - Step1 → Step2 の連続実行パイプラインの提供
 
 ### 主要機能一覧
@@ -62,7 +62,7 @@ flowchart TB
     end
 
     subgraph EXTERNAL["外部サービス層"]
-        GEMINI[Gemini API]
+        GEMINI[Ollama API（gemma4:e4b）]
         CHUNKING[chunking モジュール]
     end
 
@@ -74,14 +74,20 @@ flowchart TB
     STEP1 --> CHUNKING
     STEP2 --> GEMINI
     STEP2 --> CHUNKING
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class CLI,APP,PIPELINE,STEP1,STEP2,GEMINI,CHUNKING default
+style CLIENT fill:#1a1a1a,stroke:#fff,color:#fff
+style MODULE fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 1.2 データフロー
 
 1. クライアントから入力テキストを受信
-2. Step1: テキストを前処理し、Gemini APIで段落に分割
+2. Step1: テキストを前処理し、Ollama API（OpenAI互換）で段落に分割
 3. Step1: 段落を後処理（句読点分割）
-4. Step2: 各段落をGemini APIで意味的チャンクに分割
+4. Step2: 各段落をOllama API（OpenAI互換）で意味的チャンクに分割
 5. 最終的なチャンクリストをクライアントに返却
 
 ---
@@ -112,19 +118,25 @@ flowchart TB
     S1 --> RUN
     S2 --> RUN
     RUN --> MAIN
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class PRE,POST,S1,S2,RUN,MAIN default
+style STEP1_FUNCS fill:#1a1a1a,stroke:#fff,color:#fff
+style STEP2_FUNCS fill:#1a1a1a,stroke:#fff,color:#fff
+style PIPELINE_FUNCS fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 2.2 外部依存関係
 
 | ライブラリ | バージョン | 用途 |
 |-----------|-----------|------|
-| `google-genai` | - | Gemini API クライアント |
+| `openai` | - | Ollama API（OpenAI互換）クライアント |
 
 ### 2.3 内部依存モジュール
 
 | モジュール | 用途 |
 |-----------|------|
-| `chunking.models.StructuralResult` | API レスポンスのスキーマ定義 |
+| `chunking.models.StructuralResult` | Ollama（JSON mode）レスポンスのスキーマ定義 |
 | `chunking.models.ParagraphUnit` | 段落単位のデータモデル |
 | `chunking.models.SentenceUnit` | 文単位のデータモデル |
 | `chunking.prompts.PARAGRAPH_SEPARATION_PROMPT` | Step1 用プロンプト（階層分割） |
@@ -235,19 +247,19 @@ print(result)
 **概要**: テキストを段落単位に分割する（Step1のコア機能）。
 
 ```python
-def step1_hierarchical_split(text: str, client: genai.Client, block_size: int = 2000) -> list[str]
+def step1_hierarchical_split(text: str, client: OpenAI, block_size: int = 2000) -> list[str]
 ```
 
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
 | `text` | str | - | 入力テキスト |
-| `client` | genai.Client | - | Gemini API クライアント |
+| `client` | OpenAI | - | Ollama API（OpenAI互換）クライアント |
 | `block_size` | int | 2000 | ブロック分割サイズ（文字数） |
 
 | 項目 | 内容 |
 |------|------|
-| **Input** | `text: str`, `client: genai.Client`, `block_size: int = 2000` |
-| **Process** | 1. `preprocess_text`で前処理（長い行を句読点で分割）<br>2. `block_size`単位でブロック分割<br>3. 各ブロックに`PARAGRAPH_SEPARATION_PROMPT`を適用<br>4. Gemini APIに送信（JSON形式でレスポンス）<br>5. `StructuralResult`でパース<br>6. `ParagraphUnit.full_text`で段落テキスト取得<br>7. 各段落を`postprocess_paragraph`で後処理 |
+| **Input** | `text: str`, `client: OpenAI`, `block_size: int = 2000` |
+| **Process** | 1. `preprocess_text`で前処理（長い行を句読点で分割）<br>2. `block_size`単位でブロック分割<br>3. 各ブロックに`PARAGRAPH_SEPARATION_PROMPT`を適用<br>4. Ollama API（OpenAI互換）に送信（JSON modeでレスポンス）<br>5. `StructuralResult`でパース<br>6. `ParagraphUnit.full_text`で段落テキスト取得<br>7. 各段落を`postprocess_paragraph`で後処理 |
 | **Output** | `list[str]`: 段落のリスト（各段落は改行区切りの文の集合） |
 
 **戻り値例**:
@@ -260,9 +272,9 @@ def step1_hierarchical_split(text: str, client: genai.Client, block_size: int = 
 
 ```python
 # 使用例
-from google import genai
+from openai import OpenAI
 
-client = genai.Client(api_key="YOUR_API_KEY")
+client = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
 text = "長いテキスト..."
 paragraphs = step1_hierarchical_split(text, client)
 print(f"{len(paragraphs)}個の段落に分割")
@@ -277,18 +289,18 @@ print(f"{len(paragraphs)}個の段落に分割")
 **概要**: 段落を意味的なチャンクに分割する（Step2のコア機能）。
 
 ```python
-def step2_semantic_chunking(paragraphs: list[str], client: genai.Client) -> list[str]
+def step2_semantic_chunking(paragraphs: list[str], client: OpenAI) -> list[str]
 ```
 
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
 | `paragraphs` | list[str] | - | 段落のリスト（Step1の出力） |
-| `client` | genai.Client | - | Gemini API クライアント |
+| `client` | OpenAI | - | Ollama API（OpenAI互換）クライアント |
 
 | 項目 | 内容 |
 |------|------|
-| **Input** | `paragraphs: list[str]`, `client: genai.Client` |
-| **Process** | 1. 各段落に`SEMANTIC_CHUNKING_PROMPT`を適用<br>2. Gemini APIに送信（JSON形式でレスポンス）<br>3. `StructuralResult`でパース<br>4. `ParagraphUnit.full_text`でチャンクテキスト取得<br>5. 話題の転換点で分割されたチャンクをリストに追加 |
+| **Input** | `paragraphs: list[str]`, `client: OpenAI` |
+| **Process** | 1. 各段落に`SEMANTIC_CHUNKING_PROMPT`を適用<br>2. Ollama API（OpenAI互換）に送信（JSON modeでレスポンス）<br>3. `StructuralResult`でパース<br>4. `ParagraphUnit.full_text`でチャンクテキスト取得<br>5. 話題の転換点で分割されたチャンクをリストに追加 |
 | **Output** | `list[str]`: 意味的に分割されたチャンクのリスト |
 
 **戻り値例**:
@@ -323,13 +335,13 @@ def run_pipeline(text: str, api_key: str, verbose: bool = True) -> list[str]
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
 | `text` | str | - | 入力テキスト |
-| `api_key` | str | - | Gemini API キー |
+| `api_key` | str | - | API キー不要（ローカル実行・`"ollama"` を指定） |
 | `verbose` | bool | True | 進捗表示の有無 |
 
 | 項目 | 内容 |
 |------|------|
 | **Input** | `text: str`, `api_key: str`, `verbose: bool = True` |
-| **Process** | 1. Gemini API クライアントを生成<br>2. Step1: `step1_hierarchical_split`で段落分割<br>3. Step2: `step2_semantic_chunking`でチャンク分割<br>4. verbose=Trueの場合、進捗を表示 |
+| **Process** | 1. Ollama API（OpenAI互換）クライアントを生成<br>2. Step1: `step1_hierarchical_split`で段落分割<br>3. Step2: `step2_semantic_chunking`でチャンク分割<br>4. verbose=Trueの場合、進捗を表示 |
 | **Output** | `list[str]`: 最終的なチャンクのリスト |
 
 **戻り値例**:
@@ -344,9 +356,8 @@ def run_pipeline(text: str, api_key: str, verbose: bool = True) -> list[str]
 
 ```python
 # 使用例
-import os
-
-api_key = os.getenv("GOOGLE_API_KEY")
+# API キー不要（ローカル実行）。任意で OLLAMA_BASE_URL（既定 http://localhost:11434/v1）
+api_key = "ollama"
 text = "長いテキスト..."
 chunks = run_pipeline(text, api_key, verbose=True)
 print(f"最終結果: {len(chunks)}チャンク")
@@ -364,13 +375,14 @@ def main() -> None
 
 | 項目 | 内容 |
 |------|------|
-| **Input** | なし（環境変数 `GOOGLE_API_KEY` を使用） |
-| **Process** | 1. 環境変数からAPIキーを取得<br>2. テストテキストを定義<br>3. `run_pipeline`を実行<br>4. 結果を表示 |
+| **Input** | なし（API キー不要・ローカル実行。任意で `OLLAMA_BASE_URL` を使用） |
+| **Process** | 1. クライアント設定を取得（api_key="ollama"）<br>2. テストテキストを定義<br>3. `run_pipeline`を実行<br>4. 結果を表示 |
 | **Output** | `None`（標準出力に結果を表示） |
 
 ```python
 # 使用例（コマンドライン）
-# $ export GOOGLE_API_KEY='your-api-key'
+# API キー不要（ローカル実行）。任意で OLLAMA_BASE_URL を指定:
+# $ export OLLAMA_BASE_URL='http://localhost:11434/v1'
 # $ python step1_2.py
 ```
 
@@ -389,14 +401,14 @@ def main() -> None
 
 | 設定 | 値 | 説明 |
 |------|-----|------|
-| モデル名 | `"gemini-3-flash-preview"` | 使用するGeminiモデル |
+| モデル名 | `"gemma4:e4b"` | 使用するOllamaモデル（代替: `llama3.2`） |
 | デフォルトブロックサイズ | `2000` | Step1のブロック分割サイズ（文字数） |
 
 ### 5.3 依存モジュールのスキーマ定義
 
 #### StructuralResult（chunking.models）
 
-Gemini APIのレスポンススキーマとして使用されるPydanticモデル。
+Ollama（JSON mode）のレスポンススキーマとして使用されるPydanticモデル。スキーマをシステムプロンプトに埋め込み、`response_format={"type": "json_object"}` で受け取った JSON を `model_validate_json()` でパースする。
 
 ```python
 class StructuralResult(BaseModel):
@@ -473,11 +485,10 @@ def chunk_text(text: str, keep_delimiter: bool = True) -> List[str]
 ### 6.1 基本的なワークフロー
 
 ```python
-import os
 from step1_2 import run_pipeline
 
-# 1. APIキー取得
-api_key = os.getenv("GOOGLE_API_KEY")
+# 1. API キー不要（ローカル実行）。任意で OLLAMA_BASE_URL（既定 http://localhost:11434/v1）
+api_key = "ollama"
 
 # 2. 入力テキスト
 text = """RAG（Retrieval-Augmented Generation）は、検索と生成を組み合わせた手法です。
@@ -497,11 +508,11 @@ for i, chunk in enumerate(chunks, 1):
 ### 6.2 個別ステップの実行
 
 ```python
-from google import genai
+from openai import OpenAI
 from step1_2 import step1_hierarchical_split, step2_semantic_chunking
 
 # クライアント作成
-client = genai.Client(api_key="YOUR_API_KEY")
+client = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
 
 # Step1のみ実行
 paragraphs = step1_hierarchical_split(text, client)
@@ -549,8 +560,9 @@ from step1_2 import (
 
 | バージョン | 変更内容 |
 |-----------|---------|
+| 1.2 | Ollama ネイティブ化（Gemini→Ollama 表記/コード/依存の全面置換）。デフォルトモデルを`gemma4:e4b`に変更（2026-06-21） |
 | 1.0 | 初版作成（step1.py と step2.py を統合） |
-| 1.1 | デフォルトモデルを`gemini-3-flash-preview`に変更 |
+| 1.1 | デフォルトモデルを`gemma4:e4b`に変更 |
 
 ---
 
@@ -560,9 +572,9 @@ from step1_2 import (
 flowchart LR
     STEP12[step1_2.py]
 
-    subgraph GOOGLE["google-genai"]
-        GENAI[genai.Client]
-        TYPES[genai.types.GenerateContentConfig]
+    subgraph GOOGLE["openai (Ollama互換)"]
+        GENAI[OpenAI]
+        TYPES[openai パラメータ]
     end
 
     subgraph CHUNKING["chunking モジュール"]
@@ -593,6 +605,15 @@ flowchart LR
     STEP12 --> SCP
     STEP12 --> CT
     STEP12 --> OS
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class STEP12,GENAI,TYPES,SR,PU,SU,PSP,SCP,CT,OS default
+style GOOGLE fill:#1a1a1a,stroke:#fff,color:#fff
+style CHUNKING fill:#1a1a1a,stroke:#fff,color:#fff
+style MODELS fill:#1a1a1a,stroke:#fff,color:#fff
+style PROMPTS fill:#1a1a1a,stroke:#fff,color:#fff
+style REGEX fill:#1a1a1a,stroke:#fff,color:#fff
+style STDLIB fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 依存モジュール詳細
@@ -610,11 +631,15 @@ flowchart TB
         PU -->|"sentences: List"| SU
         PU -->|"@property"| FT["full_text() -> str"]
     end
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class SR,PU,SU,FT default
+style MODELS fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 | クラス | 説明 |
 |--------|------|
-| `StructuralResult` | Gemini APIレスポンスのルートモデル |
+| `StructuralResult` | Ollama（JSON mode）レスポンスのルートモデル |
 | `ParagraphUnit` | 段落単位（id, sentences, full_text） |
 | `SentenceUnit` | 文単位（text） |
 
@@ -633,7 +658,7 @@ flowchart TB
 
 | 項目 | 内容 |
 |------|------|
-| レート制限 | Gemini APIのレート制限に従う（詳細はGoogle AI公式ドキュメント参照） |
+| レート制限 | Ollama はローカル実行のためレート制限なし（同時実行数で制御）。ローカル実行のため API コストは発生しない（トークン集計のみ） |
 | 最大入力長 | `block_size`（デフォルト2000文字）単位で分割して送信 |
 
 ### エラーハンドリング

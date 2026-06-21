@@ -1,6 +1,6 @@
 # check_async.py - 非同期・並列処理学習プログラム ドキュメント
 
-**Version 1.0** | 最終更新: 2025-01-29
+**Version 1.1** | 最終更新: 2026-06-21
 
 ---
 
@@ -29,7 +29,7 @@
 
 - 非同期処理（async/await）の学習支援
 - 逐次処理と並列処理の比較検証
-- Gemini APIを用いたテキスト分割処理の実行
+- Ollama API（OpenAI互換）を用いたテキスト分割処理の実行
 - 処理時間計測と統計情報の表示
 - コマンドラインオプションによる動作切替
 
@@ -95,7 +95,7 @@ flowchart TB
         API[AsyncAPIClient]
         MODELS[chunking.models]
         PROMPTS[chunking.prompts]
-        GEMINI[Gemini API]
+        GEMINI[Ollama API]
     end
 
     CLI --> MAIN
@@ -114,6 +114,14 @@ flowchart TB
     API --> GEMINI
     API --> MODELS
     STEPS --> PROMPTS
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class CLI,TEST,CONFIG,MAIN,PROCESS,S1,S2,S3,FMT,SEC,PRG,API,MODELS,PROMPTS,GEMINI default
+style CLIENT fill:#1a1a1a,stroke:#fff,color:#fff
+style MODULE fill:#1a1a1a,stroke:#fff,color:#fff
+style STEPS fill:#1a1a1a,stroke:#fff,color:#fff
+style UTILS fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 1.2 データフロー
@@ -154,6 +162,14 @@ flowchart LR
     S3P --> MERGE
     MERGE --> CHUNKS
     STEP3 --> STATS
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class TEXT,ARGS,S1S,S1P,S2S,S2P,S3S,S3P,MERGE,CHUNKS,STATS default
+style INPUT fill:#1a1a1a,stroke:#fff,color:#fff
+style STEP1 fill:#1a1a1a,stroke:#fff,color:#fff
+style STEP2 fill:#1a1a1a,stroke:#fff,color:#fff
+style STEP3 fill:#1a1a1a,stroke:#fff,color:#fff
+style OUTPUT fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 1.3 処理フロー概要
@@ -225,6 +241,16 @@ flowchart TB
     PARSE --> MAIN
     PROCESS --> MAIN
     DATA_SEC --> MAIN
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class CONFIG,GLOBAL,FMT,SEC,PRG,S1SEQ,S1PAR,S2SEQ,S2PAR,S3SEQ,S3PAR,MERGE,PROCESS,PARSE,MAIN,T1,T2 default
+style CONFIG_SEC fill:#1a1a1a,stroke:#fff,color:#fff
+style UTILS_SEC fill:#1a1a1a,stroke:#fff,color:#fff
+style STEP1_SEC fill:#1a1a1a,stroke:#fff,color:#fff
+style STEP2_SEC fill:#1a1a1a,stroke:#fff,color:#fff
+style STEP3_SEC fill:#1a1a1a,stroke:#fff,color:#fff
+style MAIN_SEC fill:#1a1a1a,stroke:#fff,color:#fff
+style DATA_SEC fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 2.2 外部依存関係
@@ -256,7 +282,7 @@ flowchart TB
 | 属性 | 概要 |
 |------|------|
 | `mode` | 処理モード（sequential/parallel） |
-| `model` | 使用するGeminiモデル名 |
+| `model` | 使用するOllamaモデル名 |
 | `block_size` | Step1のブロックサイズ |
 | `max_workers` | 最大並列数 |
 | `max_retries` | 最大リトライ回数 |
@@ -317,7 +343,7 @@ flowchart TB
 @dataclass
 class ChunkingConfig:
     mode: str = "sequential"        # 処理モード
-    model: str = "gemini-2.5-flash" # Geminiモデル
+    model: str = "gemma4:e4b"       # Ollamaモデル
     block_size: int = 2000          # ブロックサイズ（文字数）
     max_workers: int = 8            # 最大並列数
     max_retries: int = 3            # 最大リトライ回数
@@ -328,7 +354,7 @@ class ChunkingConfig:
 | 属性 | 型 | デフォルト | 説明 |
 |------|------|-----------|------|
 | `mode` | str | "sequential" | 処理モード（sequential/parallel） |
-| `model` | str | "gemini-2.5-flash" | 使用するGeminiモデル名 |
+| `model` | str | "gemma4:e4b" | 使用するOllamaモデル名（代替: llama3.2） |
 | `block_size` | int | 2000 | Step1でテキストを分割するブロックサイズ（文字数） |
 | `max_workers` | int | 8 | 並列処理の最大ワーカー数 |
 | `max_retries` | int | 3 | APIエラー時の最大リトライ回数 |
@@ -661,7 +687,7 @@ async def process_text(text: str, api_key: str) -> list[str]
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
 | `text` | str | - | 入力テキスト |
-| `api_key` | str | - | Gemini APIキー |
+| `api_key` | str | - | Ollama APIキー（ローカル実行のため "ollama" 等のダミー値で可） |
 
 | 項目 | 内容 |
 |------|------|
@@ -692,7 +718,7 @@ def parse_args() -> argparse.Namespace
 | `--mode` | `-m` | sequential | 処理モード（sequential/parallel） |
 | `--workers` | `-w` | 8 | 並列処理の最大ワーカー数 |
 | `--text` | `-t` | test1 | テストテキスト（test1/test2） |
-| `--model` | - | gemini-2.5-flash | Geminiモデル名 |
+| `--model` | - | gemma4:e4b | Ollamaモデル名 |
 | `--block-size` | - | 2000 | ブロックサイズ（文字数） |
 
 ---
@@ -707,8 +733,8 @@ async def main() -> None
 
 | 項目 | 内容 |
 |------|------|
-| **Input** | なし（環境変数GOOGLE_API_KEY、コマンドライン引数） |
-| **Process** | 1. parse_args()で引数をパース<br>2. configに設定を反映<br>3. GOOGLE_API_KEYを取得（未設定ならエラー）<br>4. テストテキストを選択<br>5. 期待結果を表示<br>6. process_text()を実行<br>7. 最終結果と検証ポイントを表示 |
+| **Input** | なし（環境変数OLLAMA_BASE_URL（任意）、コマンドライン引数） |
+| **Process** | 1. parse_args()で引数をパース<br>2. configに設定を反映<br>3. Ollama サーバ稼働を確認（APIキー不要）<br>4. テストテキストを選択<br>5. 期待結果を表示<br>6. process_text()を実行<br>7. 最終結果と検証ポイントを表示 |
 | **Output** | `None`（標準出力に結果表示） |
 
 ---
@@ -726,7 +752,7 @@ config = ChunkingConfig()
 | キー | デフォルト値 | 説明 |
 |-----|-------------|------|
 | `mode` | "sequential" | 処理モード |
-| `model` | "gemini-2.5-flash" | Geminiモデル |
+| `model` | "gemma4:e4b" | Ollamaモデル |
 | `block_size` | 2000 | ブロックサイズ |
 | `max_workers` | 8 | 最大並列数 |
 | `max_retries` | 3 | 最大リトライ回数 |
@@ -747,8 +773,8 @@ config = ChunkingConfig()
 ### 6.1 基本的な使用方法（逐次処理）
 
 ```bash
-# 環境変数を設定
-export GOOGLE_API_KEY='your-api-key'
+# APIキーは不要（ローカル実行）。任意で Ollama エンドポイントを指定
+export OLLAMA_BASE_URL='http://localhost:11434/v1'
 
 # デフォルト実行（逐次処理）
 python check_async.py
@@ -786,8 +812,8 @@ python check_async.py --text test2
 ### 6.4 モデルとブロックサイズの変更
 
 ```bash
-# gemini-2.0-flash-001を使用、ブロックサイズ3000文字
-python check_async.py --model gemini-2.0-flash-001 --block-size 3000
+# gemma4:e4b を使用、ブロックサイズ3000文字
+python check_async.py --model gemma4:e4b --block-size 3000
 ```
 
 ### 6.5 Pythonコードからの使用
@@ -827,9 +853,10 @@ if __name__ == "__main__":
 
 ## 8. 変更履歴
 
-| バージョン | 変更内容 |
-|-----------|---------|
-| 1.0 | 初版作成（改善版check_async.py） |
+| バージョン | 日付 | 変更内容 |
+|-----------|------|---------|
+| 1.1 | 2026-06-21 | Ollama ネイティブ化（Gemini→Ollama 表記/コード/依存の全面置換） |
+| 1.0 | 2025-01-29 | 初版作成（改善版check_async.py） |
 
 ---
 
@@ -858,7 +885,7 @@ flowchart LR
     end
 
     subgraph EXTERNAL["外部サービス"]
-        GEMINI[Gemini API]
+        GEMINI[Ollama API]
     end
 
     CHECK --> ASYNCIO
@@ -874,6 +901,12 @@ flowchart LR
     CHECK --> PROMPTS2
     CHECK --> PROMPTS3
     APICLIENT --> GEMINI
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class CHECK,ASYNCIO,ARGPARSE,TIME,DATACLASS,TYPING,OS,APICLIENT,MODELS,MODELS2,PROMPTS,PROMPTS2,PROMPTS3,GEMINI default
+style STDLIB fill:#1a1a1a,stroke:#fff,color:#fff
+style CHUNKING fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ---
@@ -903,6 +936,11 @@ flowchart TB
         P4 --> GATHER
         P5 --> GATHER
     end
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class S1,S2,S3,S4,S5,P1,P2,P3,P4,P5,GATHER default
+style SEQ fill:#1a1a1a,stroke:#fff,color:#fff
+style PAR fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### B.2 処理時間の比較（概念図）
@@ -949,6 +987,12 @@ flowchart LR
         O6[9]
         O7[10]
     end
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class C1,C2,C3,C4,C5,C6,C7,C8,C9,C10,J1,J2,J3,J4,J5,J6,J7,J8,J9,O1,O2,O3,O4,O5,O6,O7 default
+style INPUT fill:#1a1a1a,stroke:#fff,color:#fff
+style JUDGE fill:#1a1a1a,stroke:#fff,color:#fff
+style OUTPUT fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ---

@@ -1,6 +1,6 @@
 # step1_2_3.py - セマンティックチャンキング統合パイプライン ドキュメント
 
-**Version 1.0** | 最終更新: 2025-02-01
+**Version 1.1** | 最終更新: 2026-06-21
 
 ---
 
@@ -21,7 +21,7 @@
 
 ## 概要
 
-`step1_2_3.py`は、テキストを意味的なチャンクに分割するための3段階パイプラインを提供する統合実行スクリプトです。Gemini APIを使用して、テキストの階層構造化、意味的分割、連続性チェックを順次実行します。
+`step1_2_3.py`は、テキストを意味的なチャンクに分割するための3段階パイプラインを提供する統合実行スクリプトです。Ollama API（OpenAI互換）を使用して、テキストの階層構造化、意味的分割、連続性チェックを順次実行します。
 
 ### 主な責務
 
@@ -63,7 +63,7 @@ flowchart TB
     end
 
     subgraph EXTERNAL["外部サービス層"]
-        GEMINI[Gemini API]
+        GEMINI[Ollama API]
     end
 
     subgraph CHUNKING["chunking モジュール"]
@@ -87,6 +87,13 @@ flowchart TB
     STEP2 --> PROMPTS
     STEP3 --> MODELS
     STEP3 --> PROMPTS
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class MAIN,SCRIPT,PIPELINE,STEP1,STEP2,STEP3,GEMINI,MODELS,PROMPTS,REGEX default
+style CLIENT fill:#1a1a1a,stroke:#fff,color:#fff
+style MODULE fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+style CHUNKING fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 1.2 データフロー
@@ -103,13 +110,16 @@ flowchart LR
     STEP1 -->|"段落リスト"| STEP2
     STEP2 -->|"チャンクリスト"| STEP3
     STEP3 -->|"最終チャンクリスト"| OUTPUT
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class INPUT,STEP1,STEP2,STEP3,OUTPUT default
 ```
 
 ### 1.3 処理フロー詳細
 
 1. 入力テキストを受信
-2. Step1: 前処理後、ブロック単位でGemini APIに送信し段落を抽出
-3. Step2: 各段落をGemini APIに送信し意味的チャンクに分割
+2. Step1: 前処理後、ブロック単位でOllama APIに送信し段落を抽出
+3. Step2: 各段落をOllama APIに送信し意味的チャンクに分割
 4. Step3: 隣接チャンクペアの連続性を判定し結合/分離
 5. 最終チャンクリストを返却
 
@@ -149,13 +159,21 @@ flowchart TB
     PIPE --> S2
     PIPE --> S3
     MAIN_FUNC --> PIPE
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class PRE,POST,S1,S2,S3,PIPE,MAIN_FUNC default
+style PREPROCESS fill:#1a1a1a,stroke:#fff,color:#fff
+style STEP1_GROUP fill:#1a1a1a,stroke:#fff,color:#fff
+style STEP2_GROUP fill:#1a1a1a,stroke:#fff,color:#fff
+style STEP3_GROUP fill:#1a1a1a,stroke:#fff,color:#fff
+style PIPELINE_GROUP fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 2.2 外部依存関係
 
 | ライブラリ | 用途 |
 |-----------|------|
-| `google-genai` | Gemini API クライアント |
+| `openai` | Ollama API（OpenAI互換）クライアント |
 | `pydantic` | レスポンススキーマ定義（models.py経由） |
 
 ### 2.3 内部依存モジュール
@@ -260,19 +278,19 @@ def postprocess_paragraph(paragraph: str) -> str
 **概要**: Step1のコア機能。テキストを段落単位に分割する（階層構造化）。
 
 ```python
-def step1_hierarchical_split(text: str, client: genai.Client, block_size: int = 2000) -> list[str]
+def step1_hierarchical_split(text: str, client: OpenAI, block_size: int = 2000) -> list[str]
 ```
 
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
 | `text` | str | - | 入力テキスト |
-| `client` | genai.Client | - | Gemini APIクライアント |
+| `client` | OpenAI | - | Ollama API（OpenAI互換）クライアント |
 | `block_size` | int | 2000 | ブロック分割サイズ（文字数） |
 
 | 項目 | 内容 |
 |------|------|
-| **Input** | `text: str`, `client: genai.Client`, `block_size: int = 2000` |
-| **Process** | 1. `preprocess_text()`で前処理<br>2. `block_size`単位でブロック分割<br>3. 各ブロックに`PARAGRAPH_SEPARATION_PROMPT`を適用<br>4. Gemini APIに送信（JSON形式でレスポンス）<br>5. `StructuralResult`でパース<br>6. `ParagraphUnit.full_text`で段落テキスト取得<br>7. 各段落を`postprocess_paragraph()`で後処理 |
+| **Input** | `text: str`, `client: OpenAI`, `block_size: int = 2000` |
+| **Process** | 1. `preprocess_text()`で前処理<br>2. `block_size`単位でブロック分割<br>3. 各ブロックに`PARAGRAPH_SEPARATION_PROMPT`を適用<br>4. Ollama APIに送信（JSON形式でレスポンス）<br>5. `StructuralResult`でパース<br>6. `ParagraphUnit.full_text`で段落テキスト取得<br>7. 各段落を`postprocess_paragraph()`で後処理 |
 | **Output** | `list[str]`: 段落のリスト（各段落は改行区切りの文の集合） |
 
 **処理フロー図**:
@@ -282,7 +300,7 @@ flowchart TB
     INPUT[入力テキスト]
     PRE[preprocess_text]
     BLOCK[ブロック分割]
-    API[Gemini API呼び出し]
+    API[Ollama API呼び出し]
     PARSE[StructuralResultでパース]
     POST[postprocess_paragraph]
     OUTPUT[段落リスト]
@@ -293,6 +311,9 @@ flowchart TB
     API --> PARSE
     PARSE --> POST
     POST --> OUTPUT
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class INPUT,PRE,BLOCK,API,PARSE,POST,OUTPUT default
 ```
 
 **戻り値例**:
@@ -306,7 +327,7 @@ flowchart TB
 
 ```python
 # 使用例
-client = genai.Client(api_key="YOUR_API_KEY")
+client = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
 paragraphs = step1_hierarchical_split(text, client)
 print(f"段落数: {len(paragraphs)}")
 ```
@@ -318,18 +339,18 @@ print(f"段落数: {len(paragraphs)}")
 **概要**: Step2のコア機能。段落を意味的なチャンクに分割する（Semantic Chunking）。
 
 ```python
-def step2_semantic_chunking(paragraphs: list[str], client: genai.Client) -> list[str]
+def step2_semantic_chunking(paragraphs: list[str], client: OpenAI) -> list[str]
 ```
 
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
 | `paragraphs` | list[str] | - | 段落のリスト（Step1の出力） |
-| `client` | genai.Client | - | Gemini APIクライアント |
+| `client` | OpenAI | - | Ollama API（OpenAI互換）クライアント |
 
 | 項目 | 内容 |
 |------|------|
-| **Input** | `paragraphs: list[str]`, `client: genai.Client` |
-| **Process** | 1. 各段落に`SEMANTIC_CHUNKING_PROMPT`を適用<br>2. Gemini APIに送信（JSON形式でレスポンス）<br>3. `StructuralResult`でパース<br>4. `ParagraphUnit.full_text`でチャンクテキスト取得<br>5. 話題の転換点で分割されたチャンクをリストに追加 |
+| **Input** | `paragraphs: list[str]`, `client: OpenAI` |
+| **Process** | 1. 各段落に`SEMANTIC_CHUNKING_PROMPT`を適用<br>2. Ollama APIに送信（JSON形式でレスポンス）<br>3. `StructuralResult`でパース<br>4. `ParagraphUnit.full_text`でチャンクテキスト取得<br>5. 話題の転換点で分割されたチャンクをリストに追加 |
 | **Output** | `list[str]`: 意味的に分割されたチャンクのリスト |
 
 **処理フロー図**:
@@ -339,7 +360,7 @@ flowchart TB
     INPUT[段落リスト]
     LOOP[各段落をループ]
     PROMPT[SEMANTIC_CHUNKING_PROMPT適用]
-    API[Gemini API呼び出し]
+    API[Ollama API呼び出し]
     PARSE[StructuralResultでパース]
     EXTRACT[チャンク抽出]
     OUTPUT[チャンクリスト]
@@ -350,6 +371,9 @@ flowchart TB
     API --> PARSE
     PARSE --> EXTRACT
     EXTRACT --> OUTPUT
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class INPUT,LOOP,PROMPT,API,PARSE,EXTRACT,OUTPUT default
 ```
 
 **分割基準**:
@@ -380,18 +404,18 @@ print(f"チャンク数: {len(chunks)}")
 **概要**: Step3のコア機能。隣接チャンク間の連続性をチェックし結合/分離する。
 
 ```python
-def step3_continuity_check(chunks: list[str], client: genai.Client) -> list[str]
+def step3_continuity_check(chunks: list[str], client: OpenAI) -> list[str]
 ```
 
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
 | `chunks` | list[str] | - | チャンクのリスト（Step2の出力） |
-| `client` | genai.Client | - | Gemini APIクライアント |
+| `client` | OpenAI | - | Ollama API（OpenAI互換）クライアント |
 
 | 項目 | 内容 |
 |------|------|
-| **Input** | `chunks: list[str]`, `client: genai.Client` |
-| **Process** | 1. チャンクが1つ以下なら即座に返却<br>2. 隣接ペアごとに`CONTINUITY_CHECK_PROMPT`を適用<br>3. Gemini APIに送信（JSON形式でレスポンス）<br>4. `ContinuityResult`でパースし`is_connected`を取得<br>5. `True`なら結合、`False`なら分離<br>6. マージ処理で最終チャンクリストを構築 |
+| **Input** | `chunks: list[str]`, `client: OpenAI` |
+| **Process** | 1. チャンクが1つ以下なら即座に返却<br>2. 隣接ペアごとに`CONTINUITY_CHECK_PROMPT`を適用<br>3. Ollama APIに送信（JSON形式でレスポンス）<br>4. `ContinuityResult`でパースし`is_connected`を取得<br>5. `True`なら結合、`False`なら分離<br>6. マージ処理で最終チャンクリストを構築 |
 | **Output** | `list[str]`: 連続性に基づいて結合/分離された最終チャンクリスト |
 
 **処理フロー図**:
@@ -403,7 +427,7 @@ flowchart TB
     RETURN_EARLY[そのまま返却]
     LOOP[隣接ペアをループ]
     PROMPT[CONTINUITY_CHECK_PROMPT適用]
-    API[Gemini API呼び出し]
+    API[Ollama API呼び出し]
     PARSE[ContinuityResultでパース]
     JUDGE{is_connected?}
     MERGE[結合]
@@ -421,6 +445,9 @@ flowchart TB
     JUDGE -->|False| SEPARATE
     MERGE --> OUTPUT
     SEPARATE --> OUTPUT
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class INPUT,CHECK,RETURN_EARLY,LOOP,PROMPT,API,PARSE,JUDGE,MERGE,SEPARATE,OUTPUT default
 ```
 
 **判定基準**:
@@ -461,13 +488,13 @@ def run_pipeline(text: str, api_key: str, verbose: bool = True) -> list[str]
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
 | `text` | str | - | 入力テキスト |
-| `api_key` | str | - | Gemini API キー |
+| `api_key` | str | - | API キー（ローカル実行のため未使用。`"ollama"` を渡せばよい） |
 | `verbose` | bool | True | 進捗表示フラグ |
 
 | 項目 | 内容 |
 |------|------|
 | **Input** | `text: str`, `api_key: str`, `verbose: bool = True` |
-| **Process** | 1. `genai.Client`を初期化<br>2. `step1_hierarchical_split()`を実行（段落分割）<br>3. `step2_semantic_chunking()`を実行（意味的分割）<br>4. `step3_continuity_check()`を実行（連続性チェック）<br>5. 各ステップの結果を表示（verbose=Trueの場合） |
+| **Process** | 1. `OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")` を初期化<br>2. `step1_hierarchical_split()`を実行（段落分割）<br>3. `step2_semantic_chunking()`を実行（意味的分割）<br>4. `step3_continuity_check()`を実行（連続性チェック）<br>5. 各ステップの結果を表示（verbose=Trueの場合） |
 | **Output** | `list[str]`: 最終チャンクのリスト |
 
 **処理フロー図**:
@@ -486,6 +513,9 @@ flowchart LR
     S1 -->|"N段落"| S2
     S2 -->|"Mチャンク"| S3
     S3 -->|"Kチャンク"| OUTPUT
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class INPUT,CLIENT,S1,S2,S3,OUTPUT default
 ```
 
 **戻り値例**:
@@ -503,7 +533,7 @@ flowchart LR
 
 ```python
 # 使用例
-api_key = os.getenv("GOOGLE_API_KEY")
+api_key = "ollama"  # ローカル実行のため API キーは不要
 final_chunks = run_pipeline(test_text, api_key)
 # 出力:
 # Step1: 5段落
@@ -519,7 +549,7 @@ final_chunks = run_pipeline(test_text, api_key)
 
 | 設定 | 値 | 説明 |
 |------|-----|------|
-| モデル名 | `"gemini-3-flash-preview"` | 使用するGeminiモデル |
+| モデル名 | `"gemma4:e4b"`（代替: `"llama3.2"`） | 使用するOllamaモデル |
 | デフォルトブロックサイズ | `2000` | Step1のブロック分割サイズ（文字数） |
 
 ### 5.2 使用されるプロンプト
@@ -547,8 +577,8 @@ final_chunks = run_pipeline(test_text, api_key)
 import os
 from step1_2_3 import run_pipeline
 
-# APIキー取得
-api_key = os.getenv("GOOGLE_API_KEY")
+# APIキーは不要（ローカル実行）。任意で OLLAMA_BASE_URL（既定 http://localhost:11434/v1）
+api_key = "ollama"
 
 # テキスト準備
 text = """RAG（Retrieval-Augmented Generation）は、検索と生成を組み合わせた手法です。
@@ -568,7 +598,7 @@ for i, chunk in enumerate(final_chunks, 1):
 ### 6.2 個別ステップの実行
 
 ```python
-from google import genai
+from openai import OpenAI
 from step1_2_3 import (
     step1_hierarchical_split,
     step2_semantic_chunking,
@@ -576,7 +606,7 @@ from step1_2_3 import (
 )
 
 # クライアント初期化
-client = genai.Client(api_key=api_key)
+client = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
 
 # Step1のみ実行
 paragraphs = step1_hierarchical_split(text, client)
@@ -626,6 +656,7 @@ main
 
 | バージョン | 変更内容 |
 |-----------|---------|
+| 1.1 | Ollama ネイティブ化（Gemini→Ollama 表記/コード/依存の全面置換）（2026-06-21） |
 | 1.0 | 初版作成（step1_2.pyにStep3を追加） |
 
 ---
@@ -636,9 +667,9 @@ main
 flowchart LR
     STEP123[step1_2_3.py]
 
-    subgraph GOOGLE["google-genai"]
-        GENAI[genai.Client]
-        TYPES[genai.types.GenerateContentConfig]
+    subgraph GOOGLE["openai (Ollama互換)"]
+        GENAI[OpenAI]
+        TYPES[openai パラメータ]
     end
 
     subgraph CHUNKING["chunking モジュール"]
@@ -669,6 +700,15 @@ flowchart LR
     STEP123 --> CCP
     STEP123 --> CT
     STEP123 --> OS
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class STEP123,GENAI,TYPES,SR,CR,PSP,SCP,CCP,CT,OS default
+style GOOGLE fill:#1a1a1a,stroke:#fff,color:#fff
+style CHUNKING fill:#1a1a1a,stroke:#fff,color:#fff
+style MODELS fill:#1a1a1a,stroke:#fff,color:#fff
+style PROMPTS fill:#1a1a1a,stroke:#fff,color:#fff
+style REGEX fill:#1a1a1a,stroke:#fff,color:#fff
+style STDLIB fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### データフロー詳細図
@@ -682,18 +722,18 @@ flowchart TB
     subgraph STEP1["Step1: 階層構造化"]
         S1_PRE[preprocess_text]
         S1_BLOCK[ブロック分割<br>2000文字単位]
-        S1_API[Gemini API<br>PARAGRAPH_SEPARATION_PROMPT]
+        S1_API[Ollama API<br>PARAGRAPH_SEPARATION_PROMPT]
         S1_POST[postprocess_paragraph]
     end
 
     subgraph STEP2["Step2: 意味的分割"]
         S2_LOOP[各段落をループ]
-        S2_API[Gemini API<br>SEMANTIC_CHUNKING_PROMPT]
+        S2_API[Ollama API<br>SEMANTIC_CHUNKING_PROMPT]
     end
 
     subgraph STEP3["Step3: 連続性チェック"]
         S3_PAIR[隣接ペア判定]
-        S3_API[Gemini API<br>CONTINUITY_CHECK_PROMPT]
+        S3_API[Ollama API<br>CONTINUITY_CHECK_PROMPT]
         S3_MERGE[マージ処理]
     end
 
@@ -711,6 +751,14 @@ flowchart TB
     S3_PAIR --> S3_API
     S3_API --> S3_MERGE
     S3_MERGE --> RESULT
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class TEXT,S1_PRE,S1_BLOCK,S1_API,S1_POST,S2_LOOP,S2_API,S3_PAIR,S3_API,S3_MERGE,RESULT default
+style INPUT fill:#1a1a1a,stroke:#fff,color:#fff
+style STEP1 fill:#1a1a1a,stroke:#fff,color:#fff
+style STEP2 fill:#1a1a1a,stroke:#fff,color:#fff
+style STEP3 fill:#1a1a1a,stroke:#fff,color:#fff
+style OUTPUT fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ---
