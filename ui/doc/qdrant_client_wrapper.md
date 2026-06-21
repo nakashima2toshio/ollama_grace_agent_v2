@@ -1,6 +1,6 @@
 # qdrant_client_wrapper.py - Qdrant操作ユーティリティ ドキュメント
 
-**Version 1.0** | 最終更新: 2026-02-15
+**Version 1.1** | 最終更新: 2026-06-21
 
 ---
 
@@ -21,13 +21,13 @@
 
 ## 概要
 
-`qdrant_client_wrapper.py`は、Qdrantベクトルデータベースとの操作を一元管理するユーティリティモジュールです。接続管理、コレクション操作、埋め込み生成（Dense / Sparse）、ポイント構築・登録、検索（Dense / Hybrid）の全機能を単一モジュールで提供します。Gemini 3 Migration により、OpenAI・Gemini・FastEmbed の3プロバイダーに対応した埋め込み抽象化レイヤーを備えます。
+`qdrant_client_wrapper.py`は、Qdrantベクトルデータベースとの操作を一元管理するユーティリティモジュールです。接続管理、コレクション操作、埋め込み生成（Dense / Sparse）、ポイント構築・登録、検索（Dense / Hybrid）の全機能を単一モジュールで提供します。Ollama Migration により、Ollama（デフォルト）・OpenAI・Gemini・FastEmbed のプロバイダーに対応した埋め込み抽象化レイヤーを備えます。デフォルトの埋め込みは Ollama Embedding（`nomic-embed-text` / 768次元）で、ローカル実行のため API キーは不要です。
 
 ### 主な責務
 
 - Qdrantサーバーへの接続管理とヘルスチェック
 - コレクションの作成・削除・統計情報取得
-- 埋め込みベクトル生成（Dense: Gemini/OpenAI、Sparse: SPLADE）
+- 埋め込みベクトル生成（Dense: Ollama Embedding `nomic-embed-text`、Sparse: SPLADE）
 - ポイント構築・バッチアップサート
 - コレクション検索（Dense / Hybrid の3段階フォールバック）
 - コレクションデータの取得・DataFrame変換
@@ -105,8 +105,7 @@ flowchart TB
 
     subgraph EXTERNAL["外部サービス層"]
         QDRANT[(Qdrant Vector DB)]
-        GEMINI[Gemini Embedding API]
-        OPENAI[OpenAI Embedding API]
+        OLLAMA[Ollama Embedding<br/>nomic-embed-text]
         SPLADE[FastEmbed SPLADE<br/>ローカル]
     end
 
@@ -130,9 +129,14 @@ flowchart TB
     SEARCH --> QDRANT
     FETCH --> QDRANT
     PTS --> QDRANT
-    EMB --> GEMINI
-    EMB --> OPENAI
+    EMB --> OLLAMA
     EMB --> SPLADE
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class MQR,REG,GRACE,UI_CHAT,UI_QDRANT,HC,CONN,COLL,EMB,PTS,SEARCH,FETCH,QDRANT,OLLAMA,SPLADE default
+style CLIENT fill:#1a1a1a,stroke:#fff,color:#fff
+style MODULE fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 1.2 データフロー
@@ -140,7 +144,7 @@ flowchart TB
 1. クライアント層が `create_qdrant_client()` または `get_qdrant_client()` で接続を取得
 2. `create_or_recreate_collection()` でコレクションを作成（Dense + Sparse ベクトル設定）
 3. `load_csv_for_qdrant()` でCSVデータをDataFrameにロード
-4. `embed_texts_unified()` でテキストを埋め込みベクトルに変換（プロバイダー自動選択）
+4. `embed_texts_unified()` でテキストを埋め込みベクトルに変換（プロバイダー自動選択 / 既定は Ollama）
 5. `build_points()` でDataFrame + ベクトルからQdrantポイントを構築
 6. `upsert_points()` でバッチアップサート
 7. `search_collection()` で3段階フォールバック検索（Hybrid → Dense → Simple）
@@ -157,7 +161,7 @@ flowchart TB
     subgraph CONST["定数・設定"]
         QCFG[QDRANT_CONFIG]
         PROV[PROVIDER_DEFAULTS]
-        COLL_EMB[COLLECTION_EMBEDDINGS<br/>COLLECTION_EMBEDDINGS_GEMINI]
+        COLL_EMB[COLLECTION_EMBEDDINGS<br/>COLLECTION_EMBEDDINGS_GEMINI<br/>レガシー]
         CSV_MAP[COLLECTION_CSV_MAPPING]
     end
 
@@ -236,6 +240,19 @@ flowchart TB
     EMB_T -.->|委譲| EMB_TU
     EMB_Q -.->|委譲| EMB_QU
     CREATE_PROV -.->|委譲| CREATE_COLL
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class QCFG,PROV,COLL_EMB,CSV_MAP,HC_INIT,HC_PORT,HC_CHECK,HC_GET,CREATE_C,GET_C,GET_EMB,GET_SPARSE,GET_STATS,GET_ALL,DEL_ALL,CREATE_COLL,CREATE_PROV,GET_PROV_SZ,LOAD_CSV,BUILD_INPUT,EMB_T,EMB_Q,EMB_TU,EMB_QU,EMB_ST,EMB_SQ,BUILD_PTS,UPSERT,DF_INIT,DF_COLL,DF_PTS,DF_INFO,DF_SRC,VEC_CFG,SEARCH_C,BATCHED default
+style CONST fill:#1a1a1a,stroke:#fff,color:#fff
+style HEALTH fill:#1a1a1a,stroke:#fff,color:#fff
+style CONN_FN fill:#1a1a1a,stroke:#fff,color:#fff
+style COLL_FN fill:#1a1a1a,stroke:#fff,color:#fff
+style DATA_FN fill:#1a1a1a,stroke:#fff,color:#fff
+style EMB_FN fill:#1a1a1a,stroke:#fff,color:#fff
+style PTS_FN fill:#1a1a1a,stroke:#fff,color:#fff
+style FETCHER fill:#1a1a1a,stroke:#fff,color:#fff
+style SEARCH_FN fill:#1a1a1a,stroke:#fff,color:#fff
+style UTIL fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 2.2 外部依存関係
@@ -321,7 +338,7 @@ flowchart TB
 | `embed_texts(texts, model, batch_size)` | テキストをDense Embeddingに変換（内部で`embed_texts_unified`に委譲） |
 | `embed_query(text, model, dims)` | クエリをDense Embeddingに変換（内部で`embed_query_unified`に委譲） |
 
-#### 埋め込み生成（Unified — Gemini 3 Migration）
+#### 埋め込み生成（Unified — Ollama Migration）
 
 | 関数名 | 概要 |
 |-------|------|
@@ -559,7 +576,7 @@ def fetch_collection_info(self, collection_name: str) -> Dict[str, Any]
     "indexed_vectors": 1500,
     "status": "green",
     "config": {
-        "vector_size": 3072,
+        "vector_size": 768,
         "distance": "Cosine"
     }
 }
@@ -691,18 +708,18 @@ def get_embedding_client(provider: str = None) -> EmbeddingClient
 
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
-| `provider` | str | None | `"gemini"` or `"openai"`。None の場合は `DEFAULT_EMBEDDING_PROVIDER` |
+| `provider` | str | None | `"ollama"`（既定）/ `"openai"` / `"gemini"`。None の場合は `DEFAULT_EMBEDDING_PROVIDER`（`"ollama"`） |
 
 | 項目 | 内容 |
 |------|------|
 | **Input** | `provider: str = None` |
-| **Process** | 1. プロバイダーをデフォルト解決<br>2. `_embedding_clients` 辞書にキャッシュがあれば返却<br>3. なければ `create_embedding_client()` で作成しキャッシュ |
+| **Process** | 1. プロバイダーをデフォルト解決（既定 `"ollama"`）<br>2. `_embedding_clients` 辞書にキャッシュがあれば返却<br>3. なければ `create_embedding_client()` で作成しキャッシュ |
 | **Output** | `EmbeddingClient`: キャッシュ済みインスタンス |
 
 ```python
 # 使用例
-emb_client = get_embedding_client("gemini")
-print(emb_client.dimensions)  # 3072
+emb_client = get_embedding_client("ollama")
+print(emb_client.dimensions)  # 768
 ```
 
 #### `get_cached_sparse_embedding_client`
@@ -751,7 +768,7 @@ def get_collection_stats(client: QdrantClient, collection_name: str) -> Optional
 {
     "total_points": 1500,
     "vector_config": {
-        "default": {"size": 3072, "distance": "Cosine"}
+        "default": {"size": 768, "distance": "Cosine"}
     },
     "status": "green"
 }
@@ -827,7 +844,7 @@ def create_or_recreate_collection(
 | `client` | QdrantClient | - | Qdrantクライアント |
 | `name` | str | - | コレクション名 |
 | `recreate` | bool | False | True の場合、既存を削除して再作成 |
-| `vector_size` | int | 3072 | Dense Vector の次元数 |
+| `vector_size` | int | 768 | Dense Vector の次元数（`DEFAULT_VECTOR_SIZE` = 768） |
 | `use_sparse` | bool | False | Sparse Vector（`text-sparse`）を有効化 |
 
 | 項目 | 内容 |
@@ -839,14 +856,14 @@ def create_or_recreate_collection(
 ```python
 # 使用例
 create_or_recreate_collection(
-    client, "wikipedia_ja_5per",
-    recreate=True, vector_size=3072, use_sparse=True
+    client, "wikipedia_ja_5per_ollama",
+    recreate=True, vector_size=768, use_sparse=True
 )
 ```
 
 #### `create_collection_for_provider`
 
-**概要**: プロバイダー（gemini / openai）に応じた次元数を自動設定してコレクションを作成します。
+**概要**: プロバイダー（ollama / openai / gemini）に応じた次元数を自動設定してコレクションを作成します。
 
 ```python
 def create_collection_for_provider(
@@ -862,7 +879,7 @@ def create_collection_for_provider(
 |------------|------|-----------|------|
 | `client` | QdrantClient | - | Qdrantクライアント |
 | `name` | str | - | コレクション名 |
-| `provider` | str | None | `"gemini"` or `"openai"`。None の場合はデフォルト |
+| `provider` | str | None | `"ollama"`（既定）/ `"openai"` / `"gemini"`。None の場合はデフォルト（`"ollama"`） |
 | `recreate` | bool | False | 再作成フラグ |
 | `use_sparse` | bool | False | Sparse Vector を有効化 |
 
@@ -873,8 +890,8 @@ def create_collection_for_provider(
 | **Output** | `None` |
 
 ```python
-# 使用例（Gemini: 3072次元 + Sparse）
-create_collection_for_provider(client, "qa_gemini", provider="gemini", use_sparse=True)
+# 使用例（Ollama: 768次元 + Sparse）
+create_collection_for_provider(client, "qa_ollama", provider="ollama", use_sparse=True)
 ```
 
 #### `get_provider_vector_size`
@@ -887,13 +904,13 @@ def get_provider_vector_size(provider: str = None) -> int
 
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
-| `provider` | str | None | `"gemini"` or `"openai"` |
+| `provider` | str | None | `"ollama"`（既定）/ `"openai"` / `"gemini"` |
 
 | 項目 | 内容 |
 |------|------|
 | **Input** | `provider: str = None` |
 | **Process** | `get_embedding_dimensions(provider)` に委譲 |
-| **Output** | `int`: 次元数（Gemini: 3072, OpenAI: 1536, FastEmbed: 384） |
+| **Output** | `int`: 次元数（Ollama: 768, OpenAI: 1536, Gemini: 3072, FastEmbed: 384） |
 
 ---
 
@@ -971,13 +988,13 @@ def embed_texts(
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
 | `texts` | List[str] | - | テキストリスト |
-| `model` | str | `"gemini-embedding-001"` | 埋め込みモデル名（互換性のため保持、実際にはGeminiを使用） |
+| `model` | str | `"nomic-embed-text"` | 埋め込みモデル名（互換性のため保持、実際には Ollama を使用） |
 | `batch_size` | int | 128 | バッチサイズ |
 
 | 項目 | 内容 |
 |------|------|
 | **Input** | `texts`, `model`, `batch_size` |
-| **Process** | `embed_texts_unified(texts, provider="gemini", batch_size=batch_size)` に委譲 |
+| **Process** | `embed_texts_unified(texts, provider="ollama", batch_size=batch_size)` に委譲 |
 | **Output** | `List[List[float]]`: 埋め込みベクトルのリスト |
 
 #### `embed_query`
@@ -997,18 +1014,18 @@ def embed_query(
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
 | `text` | str | - | 埋め込むテキスト |
-| `model` | str | `"gemini-embedding-001"` | モデル名（互換性のため保持） |
+| `model` | str | `"nomic-embed-text"` | モデル名（互換性のため保持） |
 | `dims` | Optional[int] | None | 次元数（未使用） |
 
 | 項目 | 内容 |
 |------|------|
 | **Input** | `text`, `model`, `dims` |
-| **Process** | `embed_query_unified(text, provider="gemini")` に委譲 |
+| **Process** | `embed_query_unified(text, provider="ollama")` に委譲 |
 | **Output** | `List[float]`: 埋め込みベクトル |
 
 ---
 
-### 4.8 埋め込み生成関数（Unified — Gemini 3 Migration）
+### 4.8 埋め込み生成関数（Unified — Ollama Migration / プロバイダー抽象化）
 
 #### `embed_texts_unified`
 
@@ -1025,19 +1042,19 @@ def embed_texts_unified(
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
 | `texts` | List[str] | - | テキストリスト |
-| `provider` | str | None | `"gemini"` or `"openai"`。None の場合はデフォルト |
+| `provider` | str | None | `"ollama"`（既定）/ `"openai"` / `"gemini"`。None の場合はデフォルト（`"ollama"`） |
 | `batch_size` | int | 100 | バッチサイズ |
 
 | 項目 | 内容 |
 |------|------|
 | **Input** | `texts`, `provider`, `batch_size` |
 | **Process** | 1. プロバイダーをデフォルト解決<br>2. `get_embedding_client()` でキャッシュ済みクライアント取得<br>3. 空文字列・空白のみを除外して有効テキストを抽出<br>4. 全テキストが空の場合、ダミーゼロベクトルを返却<br>5. `embedding_client.embed_texts()` で一括生成<br>6. 元のインデックスに合わせてベクトルを再配置（空文字列箇所はゼロ埋め） |
-| **Output** | `List[List[float]]`: 埋め込みベクトルのリスト（Gemini: 3072次元, OpenAI: 1536次元） |
+| **Output** | `List[List[float]]`: 埋め込みベクトルのリスト（Ollama: 768次元, OpenAI: 1536次元, Gemini: 3072次元） |
 
 ```python
 # 使用例
-vectors = embed_texts_unified(["東京の天気", "大阪の観光"], provider="gemini")
-print(f"次元数: {len(vectors[0])}")  # 3072
+vectors = embed_texts_unified(["東京の天気", "大阪の観光"], provider="ollama")
+print(f"次元数: {len(vectors[0])}")  # 768
 ```
 
 #### `embed_query_unified`
@@ -1051,18 +1068,18 @@ def embed_query_unified(text: str, provider: str = None) -> List[float]
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
 | `text` | str | - | 埋め込むテキスト |
-| `provider` | str | None | `"gemini"` or `"openai"` |
+| `provider` | str | None | `"ollama"`（既定）/ `"openai"` / `"gemini"` |
 
 | 項目 | 内容 |
 |------|------|
 | **Input** | `text`, `provider` |
-| **Process** | 1. プロバイダーをデフォルト解決<br>2. `get_embedding_client()` でクライアント取得<br>3. `embed_text(text, task_type="retrieval_query")` で変換 |
+| **Process** | 1. プロバイダーをデフォルト解決（既定 `"ollama"`）<br>2. `get_embedding_client()` でクライアント取得<br>3. `embed_text(text, task_type="retrieval_query")` で変換 |
 | **Output** | `List[float]`: 埋め込みベクトル |
 
 ```python
 # 使用例
-vector = embed_query_unified("検索クエリ", provider="gemini")
-print(f"次元数: {len(vector)}")  # 3072
+vector = embed_query_unified("検索クエリ", provider="ollama")
+print(f"次元数: {len(vector)}")  # 768
 ```
 
 #### `embed_sparse_texts_unified`
@@ -1145,7 +1162,7 @@ def build_points(
 [
     PointStruct(
         id=1234567890,
-        vector=[0.01, -0.02, ...],  # 3072次元
+        vector=[0.01, -0.02, ...],  # 768次元
         payload={
             "domain": "wikipedia_ja",
             "question": "東京タワーの高さは？",
@@ -1260,9 +1277,9 @@ def search_collection(
 
 ```python
 # 使用例（Hybrid Search）
-query_vec = embed_query_unified("東京タワー", provider="gemini")
+query_vec = embed_query_unified("東京タワー", provider="ollama")
 sparse_vec = embed_sparse_query_unified("東京タワー")
-results = search_collection(client, "wikipedia_ja_5per", query_vec, sparse_vec, limit=5)
+results = search_collection(client, "wikipedia_ja_5per_ollama", query_vec, sparse_vec, limit=5)
 for r in results:
     print(f"Score: {r['score']:.4f} - {r['payload']['question']}")
 ```
@@ -1289,6 +1306,9 @@ flowchart TB
     S3 --> S3OK{"成功?"}
     S3OK -->|Yes| RESULT
     S3OK -->|No| EMPTY["空リスト返却"]
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class START,CHK,S1,S2,S1OK,RESULT,S1ERR,RAISE,S2OK,S3,S3OK,EMPTY default
 ```
 
 ---
@@ -1326,11 +1346,14 @@ QDRANT_CONFIG = {
 
 ```python
 PROVIDER_DEFAULTS = {
+    "ollama"   : {"model": "nomic-embed-text", "dims": 768},   # デフォルト（ローカル実行）
     "gemini"   : {"model": "gemini-embedding-001", "dims": 3072},
     "openai"   : {"model": "text-embedding-3-small", "dims": 1536},
     "fastembed": {"model": "BAAI/bge-small-en-v1.5", "dims": 384},
 }
 ```
+
+> 📝 **注意**: デフォルトプロバイダーは `ollama`（`nomic-embed-text` / 768次元）。`gemini` / `openai` エントリは、異種・レガシーコレクション検索用の後方互換フォールバックとして保持されています。
 
 ### 5.3 COLLECTION_EMBEDDINGS
 
@@ -1346,7 +1369,7 @@ COLLECTION_EMBEDDINGS = {
 
 ### 5.4 COLLECTION_EMBEDDINGS_GEMINI
 
-Gemini 3対応コレクション設定（3072次元）です。
+> ⚠️ **レガシー（後方互換）**: Gemini 3072次元コレクション用の設定です。Ollama ネイティブ運用では使用しませんが、過去に登録された Gemini コレクションを検索する際のフォールバックとして残しています。新規登録は Ollama Embedding（`nomic-embed-text` / 768次元、`*_ollama` コレクション）を使用してください。
 
 ```python
 COLLECTION_EMBEDDINGS_GEMINI = {
@@ -1375,9 +1398,11 @@ COLLECTION_CSV_MAPPING = {
 
 | 定数名 | 値 | 説明 |
 |-------|-----|------|
-| `DEFAULT_EMBEDDING_MODEL` | `"gemini-embedding-001"` | デフォルト埋め込みモデル |
-| `DEFAULT_VECTOR_SIZE` | 3072 | デフォルトベクトル次元数 |
-| `DEFAULT_EMBEDDING_PROVIDER` | `os.getenv("EMBEDDING_PROVIDER", "gemini")` | デフォルトプロバイダー（環境変数で変更可） |
+| `DEFAULT_EMBEDDING_MODEL` | `"nomic-embed-text"` | デフォルト埋め込みモデル（`QdrantConfig.DEFAULT_EMBEDDING_MODEL`） |
+| `DEFAULT_VECTOR_SIZE` | 768 | デフォルトベクトル次元数（`QdrantConfig.DEFAULT_VECTOR_SIZE`） |
+| `DEFAULT_EMBEDDING_PROVIDER` | `os.getenv("EMBEDDING_PROVIDER", "ollama")` | デフォルトプロバイダー（環境変数で変更可） |
+
+> 📝 **APIキー不要**: Ollama はローカル実行のため API キーは不要です。接続先は任意の環境変数 `OLLAMA_BASE_URL` で変更できます（既定はローカルの Ollama サーバー）。ローカル実行のため API コストは発生しません（トークン集計のみ）。
 
 ---
 
@@ -1399,10 +1424,10 @@ from qdrant_client_wrapper import (
 # 1. Qdrant接続
 client = create_qdrant_client()
 
-# 2. コレクション作成（3072次元 + Sparse）
+# 2. コレクション作成（768次元 + Sparse）
 create_or_recreate_collection(
-    client, "my_collection",
-    recreate=True, vector_size=3072, use_sparse=True
+    client, "my_collection_ollama",
+    recreate=True, vector_size=768, use_sparse=True
 )
 
 # 3. CSVロード
@@ -1410,11 +1435,11 @@ df = load_csv_for_qdrant("data/qa_pairs.csv")
 
 # 4. 埋め込み生成
 texts = build_inputs_for_embedding(df, include_answer=True)
-vectors = embed_texts_unified(texts, provider="gemini")
+vectors = embed_texts_unified(texts, provider="ollama")
 
 # 5. ポイント構築 + 登録
 points = build_points(df, vectors, domain="my_domain", source_file="qa_pairs.csv")
-count = upsert_points(client, "my_collection", points)
+count = upsert_points(client, "my_collection_ollama", points)
 print(f"登録完了: {count}件")
 ```
 
@@ -1433,12 +1458,12 @@ client = get_qdrant_client()
 
 # 2. クエリの埋め込み生成
 query = "東京タワーの高さは？"
-dense_vec = embed_query_unified(query, provider="gemini")
+dense_vec = embed_query_unified(query, provider="ollama")
 sparse_vec = embed_sparse_query_unified(query)
 
 # 3. Hybrid Search
 results = search_collection(
-    client, "wikipedia_ja_5per",
+    client, "wikipedia_ja_5per_ollama",
     query_vector=dense_vec,
     sparse_vector=sparse_vec,
     limit=5
@@ -1491,10 +1516,10 @@ __all__ = [
     "COLLECTION_EMBEDDINGS",
     "COLLECTION_CSV_MAPPING",
 
-    # Gemini 3 Migration: プロバイダー設定
+    # Ollama Migration: プロバイダー設定
     "DEFAULT_EMBEDDING_PROVIDER",
     "PROVIDER_DEFAULTS",
-    "COLLECTION_EMBEDDINGS_GEMINI",
+    "COLLECTION_EMBEDDINGS_GEMINI",  # レガシー（後方互換）
 
     # ユーティリティ
     "batched",
@@ -1514,11 +1539,11 @@ __all__ = [
     "load_csv_for_qdrant",
     "build_inputs_for_embedding",
 
-    # 埋め込み（レガシー: OpenAI用）
+    # 埋め込み（レガシー互換）
     "embed_texts",
     "embed_query",
 
-    # Gemini 3 Migration: 埋め込み（抽象化版）
+    # Ollama Migration: 埋め込み（抽象化版）
     "embed_texts_unified",
     "embed_query_unified",
     "get_embedding_client",
@@ -1554,6 +1579,7 @@ __all__ = [
 | バージョン | 変更内容 |
 |-----------|---------|
 | 1.0 | 初版作成 |
+| 1.1（2026-06-21） | Ollama ネイティブ化の表記統一・Mermaid §7 スタイル整備 |
 
 ---
 
@@ -1609,5 +1635,13 @@ flowchart LR
     C2 --> WRAPPER
     C3 --> WRAPPER
     C4 --> WRAPPER
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class WRAPPER,QC,QM,QE,DF,READ_CSV,HE,HS,CFG,SOCKET,OS,LOGGING,TIME,C1,C2,C3,C4 default
+style QDRANT_LIB fill:#1a1a1a,stroke:#fff,color:#fff
+style PANDAS fill:#1a1a1a,stroke:#fff,color:#fff
+style HELPER fill:#1a1a1a,stroke:#fff,color:#fff
+style STDLIB fill:#1a1a1a,stroke:#fff,color:#fff
+style CALLERS fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 

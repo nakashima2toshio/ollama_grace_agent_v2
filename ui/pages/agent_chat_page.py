@@ -4,7 +4,7 @@
 """
 agent_chat_page.py - ハイブリッド・ナレッジ・エージェント チャット画面
 ================================================================
-Gemini 2.0 Flash を使用した ReAct 型エージェントとの対話インターフェース。
+Ollama（ローカルLLM）を使用した ReAct 型エージェントとの対話インターフェース。
 Qdrant 上のナレッジベース(コレクション)を動的に選択し、RAG 検索を行いながら回答します。
 """
 
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 def show_agent_chat_page():
     st.title("🤖 エージェント対話 (Agent Chat)")
-    st.caption("Gemini 3.0 Flash + ReAct + Qdrant Hybrid RAG (Dense + Sparse)")
+    st.caption("Ollama (ローカルLLM) + ReAct + Qdrant Hybrid RAG (Dense + Sparse)")
 
     # -------------------------------------------------------------------------
     # コレクションデータの表示エリア (Modified)

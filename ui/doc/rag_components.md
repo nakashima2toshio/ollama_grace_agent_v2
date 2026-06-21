@@ -1,6 +1,6 @@
 # rag_components.py - RAGデータ前処理用UIコンポーネント ドキュメント
 
-**Version 1.0** | 最終更新: 2025-01-29
+**Version 1.1** | 最終更新: 2026-06-21
 
 ---
 
@@ -25,9 +25,9 @@
 
 ### 主な責務
 
-- LLMモデル選択UIの提供
-- 選択モデルの情報表示（料金、制限、推奨度）
-- 処理済みデータのトークン使用量・コスト推定
+- Ollama（ローカルLLM）モデル選択UIの提供
+- 選択モデルの情報表示（制限、推奨度。ローカル実行のため API コストは発生しない）
+- 処理済みデータのトークン使用量推定（トークン集計のみ）
 - 処理前後の統計情報表示
 - データセット別使用方法説明の表示
 - ページ設定・ヘッダーの初期化
@@ -36,7 +36,7 @@
 
 | 機能 | 説明 |
 |------|------|
-| `select_model()` | サイドバーでのLLMモデル選択UI |
+| `select_model()` | サイドバーでのOllama（ローカルLLM）モデル選択UI |
 | `show_model_info()` | 選択モデルの詳細情報表示 |
 | `estimate_token_usage()` | トークン使用量とコストの推定表示 |
 | `display_statistics()` | 処理前後のデータ統計情報表示 |
@@ -83,6 +83,13 @@ flowchart TB
     UI_FUNC --> ST
     PAGE_SETUP --> RAG
     PAGE_SETUP --> ST
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class FAQ,MED,SCI,LEG,UI_FUNC,PAGE_SETUP,LLM,RAG,ST default
+style CLIENT fill:#1a1a1a,stroke:#fff,color:#fff
+style MODULE fill:#1a1a1a,stroke:#fff,color:#fff
+style HELPER fill:#1a1a1a,stroke:#fff,color:#fff
+style STREAMLIT fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 1.2 データフロー
@@ -128,6 +135,12 @@ flowchart TB
     SPC --> RAG_HELPER
     SPH --> RAG_HELPER
     SSH --> RAG_HELPER
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class SM,SMI,ETU,DS,SUI,SPC,SPH,SSH,LLM_HELPER,RAG_HELPER default
+style UI_FUNCS fill:#1a1a1a,stroke:#fff,color:#fff
+style PAGE_FUNCS fill:#1a1a1a,stroke:#fff,color:#fff
+style IMPORTS fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 2.2 外部依存関係
@@ -174,7 +187,7 @@ flowchart TB
 
 #### `select_model`
 
-**概要**: サイドバーにLLMモデル選択のセレクトボックスを表示し、選択されたモデル名を返す。
+**概要**: サイドバーにOllama（ローカルLLM）モデル選択のセレクトボックスを表示し、選択されたモデル名を返す。
 
 ```python
 def select_model(key: str = "model_selection") -> str
@@ -193,7 +206,7 @@ def select_model(key: str = "model_selection") -> str
 **戻り値例**:
 
 ```python
-"gemini-2.0-flash"
+"gemma4:e4b"
 ```
 
 ```python
@@ -202,7 +215,7 @@ from ui.components.rag_components import select_model
 
 selected = select_model(key="my_model_select")
 print(f"選択モデル: {selected}")
-# 出力: 選択モデル: gemini-2.0-flash
+# 出力: 選択モデル: gemma4:e4b
 ```
 
 ---
@@ -222,7 +235,7 @@ def show_model_info(selected_model: str) -> None
 | 項目 | 内容 |
 |------|------|
 | **Input** | `selected_model: str` |
-| **Process** | 1. `get_llm_model_limits()`で制限情報取得<br>2. `get_llm_model_pricing()`で料金情報取得<br>3. モデル特性を判定（Gemini 2.0/1.5/GPT等）<br>4. RAG用途推奨度を判定（flash/pro/gpt）<br>5. `st.sidebar.expander()`で情報表示 |
+| **Process** | 1. `get_llm_model_limits()`で制限情報取得<br>2. ローカル実行のため API コストは発生しない旨を表示（トークン集計のみ）<br>3. モデル特性を判定（Gemma/Llama/Qwen/Mistral 等の Ollama シリーズ）<br>4. RAG用途推奨度を判定（gemma4/llama/qwen 等）<br>5. `st.sidebar.expander()`で情報表示 |
 | **Output** | なし（画面表示のみ） |
 
 **表示内容**:
@@ -231,8 +244,8 @@ def show_model_info(selected_model: str) -> None
 |------|------|
 | 最大入力 | 最大入力トークン数 |
 | 最大出力 | 最大出力トークン数 |
-| 料金（1000トークン） | 入力/出力の料金 |
-| モデル特性 | Gemini 2.0/1.5/OpenAI互換等 |
+| API コスト | ローカル実行のため API コストは発生しない（トークン集計のみ） |
+| モデル特性 | Gemma/Llama/Qwen/Mistral 等の Ollama シリーズ |
 | RAG用途推奨度 | 最適/高品質/標準 |
 
 ```python
@@ -248,7 +261,7 @@ show_model_info(selected)
 
 #### `estimate_token_usage`
 
-**概要**: 処理済みDataFrameのトークン使用量とEmbeddingコストを推定し、エキスパンダーに表示する。
+**概要**: 処理済みDataFrameのトークン使用量を推定し、エキスパンダーに表示する。Embedding は `nomic-embed-text`（768次元）を想定し、ローカル実行のため API コストは発生しない（トークン集計のみ）。
 
 ```python
 def estimate_token_usage(df_processed: pd.DataFrame, selected_model: str) -> None
@@ -257,12 +270,12 @@ def estimate_token_usage(df_processed: pd.DataFrame, selected_model: str) -> Non
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
 | `df_processed` | `pd.DataFrame` | - | 処理済みデータフレーム（`Combined_Text`列を含む） |
-| `selected_model` | `str` | - | 選択されたLLMモデル名 |
+| `selected_model` | `str` | - | 選択されたOllama（ローカルLLM）モデル名 |
 
 | 項目 | 内容 |
 |------|------|
 | **Input** | `df_processed: pd.DataFrame`, `selected_model: str` |
-| **Process** | 1. `Combined_Text`列の存在確認<br>2. サンプルテキスト（最大10件）でトークン数計測<br>3. 全体のトークン数を比例推定<br>4. Embeddingモデルの料金取得<br>5. コスト計算<br>6. `st.expander()`でメトリクス表示 |
+| **Process** | 1. `Combined_Text`列の存在確認<br>2. サンプルテキスト（最大10件）でトークン数計測<br>3. 全体のトークン数を比例推定<br>4. Embeddingモデル（`nomic-embed-text`）名を取得<br>5. ローカル実行のため API コストは発生しない旨を表示<br>6. `st.expander()`でメトリクス表示 |
 | **Output** | なし（画面表示のみ） |
 
 **表示内容**:
@@ -271,7 +284,7 @@ def estimate_token_usage(df_processed: pd.DataFrame, selected_model: str) -> Non
 |-----------|------|
 | 推定総トークン数 | 全レコードの推定トークン数 |
 | 平均トークン/レコード | 1レコードあたりの平均トークン数 |
-| 推定embedding費用 | Embeddingにかかる推定コスト（USD） |
+| API コスト | ローカル実行のため発生しない（トークン集計のみ） |
 
 ```python
 # 使用例
@@ -281,7 +294,7 @@ from ui.components.rag_components import estimate_token_usage
 df = pd.DataFrame({
     "Combined_Text": ["質問1の内容 回答1の内容", "質問2の内容 回答2の内容"]
 })
-estimate_token_usage(df, "gemini-2.0-flash")
+estimate_token_usage(df, "gemma4:e4b")
 # エキスパンダーにトークン使用量が表示される
 ```
 
@@ -604,6 +617,7 @@ __all__ = [
 | バージョン | 日付 | 変更内容 |
 |-----------|------|---------|
 | 1.0 | 2025-01-29 | 初版作成（helper_rag_ui.pyから分離） |
+| 1.1 | 2026-06-21 | Ollama（ローカルLLM）ネイティブ化。モデル特性を Gemma/Llama/Qwen/Mistral 系に更新、Embedding を `nomic-embed-text`（768次元）に統一、API コスト記述を「ローカル実行のため発生しない（トークン集計のみ）」へ変更 |
 
 ---
 
@@ -656,6 +670,14 @@ flowchart LR
     RAG_COMP --> DEFAULT_PROV
     RAG_COMP --> RAG_CONFIG
     RAG_COMP --> TOKEN_MGR
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class RAG_COMP,ST_SIDEBAR,ST_EXPANDER,ST_METRIC,ST_COLUMNS,ST_MARKDOWN,ST_CONFIG,DF,GET_MODELS,GET_LIMITS,GET_PRICING,GET_EMB_MODELS,GET_EMB_PRICING,DEFAULT_PROV,RAG_CONFIG,TOKEN_MGR default
+style STREAMLIT fill:#1a1a1a,stroke:#fff,color:#fff
+style PANDAS fill:#1a1a1a,stroke:#fff,color:#fff
+style HELPER fill:#1a1a1a,stroke:#fff,color:#fff
+style LLM fill:#1a1a1a,stroke:#fff,color:#fff
+style RAG fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ---
@@ -681,4 +703,10 @@ flowchart LR
     SIDEBAR --> MAIN
     SSH --> SM --> SMI
     SPH --> DS --> ETU --> SUI
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class SSH,SM,SMI,SPH,DS,ETU,SUI default
+style PAGE fill:#1a1a1a,stroke:#fff,color:#fff
+style SIDEBAR fill:#1a1a1a,stroke:#fff,color:#fff
+style MAIN fill:#1a1a1a,stroke:#fff,color:#fff
 ```
