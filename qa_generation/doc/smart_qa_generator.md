@@ -1,8 +1,10 @@
-# smart_qa_generator.py 完全ガイド（v2.5）
+# smart_qa_generator.py 完全ガイド（v3.0）
 
 ## 概要
 
-`qa_generation/smart_qa_generator.py` は、**コンテンツを考慮したインテリジェントQ/A生成システム**です。従来の固定数Q/A生成方式と異なり、LLMによるチャンク分析を行い、各チャンクの情報密度・重要度・複雑さに応じて最適なQ/A数を動的に決定します。
+`qa_generation/smart_qa_generator.py` は、**コンテンツを考慮したインテリジェントQ/A生成システム**です。従来の固定数Q/A生成方式と異なり、LLM（Ollama・ローカルLLM）によるチャンク分析を行い、各チャンクの情報密度・重要度・複雑さに応じて最適なQ/A数を動的に決定します。
+
+v3.0 では分析（`analyze_chunk`）と生成（`generate_qa_pairs`）の2段階方式を廃止し、Ollama の JSON mode 構造化出力（`{"qa_pairs":[...]}` を含む `SmartQAResult`）による **1回呼び出し** に統合しました。Markdownフェンス手剥がし＋`json.raw_decode` の脆弱なパースも排除されています。LLM はローカル実行のため API キーは不要で、API コストも発生しません。
 
 ---
 
@@ -59,31 +61,25 @@ Smart: チャンク分析 → 0〜5個の最適なQ/A数
 }
 ```
 
-#### 3. 2段階処理による品質向上
+#### 3. 構造化出力1回による品質向上
 
 ```mermaid
 graph LR
-    A[チャンク] --> B[分析フェーズ]
-    B --> C{Q/A数決定}
-    C -->|0個| D[スキップ]
-    C -->|1-5個| E[生成フェーズ]
-    E --> F[Q/Aペア]
+    A["チャンク"] --> B["分析＋生成（統合1回）"]
+    B --> C{"qa_count"}
+    C -->|"0個"| D["空リスト（スキップ）"]
+    C -->|"1-5個"| F["Q/Aペア"]
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D,F default
 ```
 
-- **分析フェーズ**: 低温度（0.1）で安定した判断
-- **生成フェーズ**: 中温度（0.3）で自然な文章生成
+- **統合呼び出し**: `temperature=0.2` で安定した分析と自然な生成を1回で実行
+- Ollama の JSON mode 構造化出力（`SmartQAResult`）でスキーマ準拠の結果を取得
 
-#### 4. フォールバック機構
+#### 4. 構造化出力による堅牢化
 
-API障害時でも文字数ベースの簡易判定で処理を継続します。
-
-```python
-# フォールバック基準
-token_count < 50   → 0個
-token_count < 100  → 1個
-token_count < 200  → 2個
-token_count >= 200 → 3個
-```
+JSON mode 構造化出力（`{"qa_pairs":[...]}`）でスキーマ準拠の結果を直接受け取るため、Markdownフェンス手剥がし＋`json.raw_decode` の脆弱なパースは不要です。構造化出力に失敗した場合は `success=False` を返し、呼び出し側でそのチャンクをスキップします。
 
 #### 5. 統計分析機能
 
@@ -113,11 +109,9 @@ token_count >= 200 → 3個
 │  ┌─────────────────────────────────────────────────────┐    │
 │  │              SmartQAGenerator クラス                 │    │
 │  ├─────────────────────────────────────────────────────┤    │
-│  │  __init__()           # 初期化・API設定               │    │
-│  │  _generate_content()  # LLM呼び出し（内部）            │    │
-│  │  analyze_chunk()      # チャンク分析                  │    │
-│  │  generate_qa_pairs()  # Q/Aペア生成                   │   │
-│  │  process_chunk()      # 一括処理（メイン）             │   │
+│  │  __init__()             # 初期化・Ollamaクライアント    │    │
+│  │  analyze_and_generate() # 構造化出力1回（分析＋生成）   │    │
+│  │  process_chunk()        # 一括処理（メイン）           │   │
 │  └─────────────────────────────────────────────────────┘   │
 │                                                            │
 │  ┌─────────────────────────────────────────────────────┐   │
@@ -130,9 +124,9 @@ token_count >= 200 → 3個
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                    Google Gemini API                        │
-│  ├─ google.genai（新API・推奨）                               │
-│  └─ google.generativeai（旧API・フォールバック）                │
+│                  Ollama API（OpenAI 互換）                   │
+│  └─ create_llm_client("ollama").generate_structured()       │
+│       JSON mode 構造化出力 → SmartQAResult                   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -140,29 +134,35 @@ token_count >= 200 → 3個
 
 ```mermaid
 graph TB
-    subgraph Input
-        A[チャンクテキスト]
+    subgraph Input["Input"]
+        A["チャンクテキスト"]
     end
 
-    subgraph "SmartQAGenerator.process_chunk()"
-        B[analyze_chunk]
-        C{qa_count}
-        D[generate_qa_pairs]
-        E[スキップ]
+    subgraph Proc["SmartQAGenerator.process_chunk()"]
+        B["analyze_and_generate（構造化出力1回）"]
+        C{"qa_count"}
+        D["Q/Aペア生成"]
+        E["空リスト（スキップ）"]
     end
 
-    subgraph Output
-        F[Q/Aペアリスト]
-        G[分析結果]
+    subgraph Output["Output"]
+        F["Q/Aペアリスト"]
+        G["分析結果"]
     end
 
     A --> B
     B --> C
-    C -->|0| E
-    C -->|1-5| D
+    C -->|"0"| E
+    C -->|"1-5"| D
     D --> F
     B --> G
     E --> G
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D,E,F,G default
+style Input fill:#1a1a1a,stroke:#fff,color:#fff
+style Proc fill:#1a1a1a,stroke:#fff,color:#fff
+style Output fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ---
@@ -179,11 +179,16 @@ graph TB
 
 | メソッド名 | 可視性 | 機能概要 |
 |-----------|:-----:|---------|
-| `__init__` | public | インスタンス初期化。Gemini APIクライアントの設定。 |
-| `_generate_content` | private | LLMへのプロンプト送信と応答取得。新旧API両対応。 |
-| `analyze_chunk` | public | チャンクの情報密度・重要度・複雑さを分析し、最適なQ/A数を決定。 |
-| `generate_qa_pairs` | public | 分析結果に基づいてQ/Aペアを生成。 |
-| `process_chunk` | public | 分析と生成を一括実行するメインメソッド。 |
+| `__init__` | public | インスタンス初期化。`create_llm_client("ollama")` で Ollama クライアントを生成。 |
+| `analyze_and_generate` | public | チャンク分析とQ/A生成を JSON mode 構造化出力1回で実行し `SmartQAResult` を返す。 |
+| `process_chunk` | public | 分析と生成を一括実行するメインメソッド。結果を dict に整形。 |
+
+### 構造化出力スキーマ一覧
+
+| クラス名 | 機能概要 |
+|---------|---------|
+| `SmartQAPair` | Q/Aペア1件（`question` / `answer` / `topic`）の Pydantic モデル。 |
+| `SmartQAResult` | チャンク分析とQ/A生成の統合結果（`qa_count` / `key_topics` / `importance_score` / `complexity` / `reasoning` / `qa_pairs`）。 |
 
 ### ユーティリティ関数一覧
 
@@ -201,125 +206,66 @@ graph TB
 
 | 区分 | 内容 |
 |-----|------|
-| **Input** | `model`: str（使用モデル名、デフォルト: "gemini-2.0-flash"）<br>`api_key`: Optional[str]（APIキー、Noneの場合は環境変数から取得） |
-| **Process** | 1. APIバージョン判定（新API/旧API）<br>2. クライアントインスタンス生成<br>3. モデル名の保存 |
+| **Input** | `model`: str（使用モデル名、デフォルト: "gemma4:e4b"）<br>`api_key`: Optional[str]（未使用。Ollama はローカル実行のためキー不要） |
+| **Process** | 1. モデル名の保存<br>2. `create_llm_client("ollama", default_model=...)` で Ollama クライアント生成 |
 | **Output** | SmartQAGeneratorインスタンス |
 
 #### プロセスフロー
 
 ```mermaid
 flowchart TD
-    A[開始] --> B{USING_NEW_API?}
-    B -->|Yes| C[genai.Client初期化]
-    B -->|No| D[GenerativeModel初期化]
-    C --> E{api_key指定?}
-    D --> F{api_key指定?}
-    E -->|Yes| G[api_key付きClient]
-    E -->|No| H[環境変数Client]
-    F -->|Yes| I[genai.configure]
-    F -->|No| J[デフォルト設定]
-    G --> K[self.client設定]
-    H --> K
-    I --> L[self.model_instance設定]
-    J --> L
-    K --> M[完了]
-    L --> M
+    A["開始"] --> B["model 保存（既定 gemma4:e4b）"]
+    B --> C["create_llm_client('ollama') 呼び出し"]
+    C --> D["self.llm 設定"]
+    D --> E["完了"]
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D,E default
 ```
 
 ---
 
-### SmartQAGenerator.analyze_chunk()
+### SmartQAGenerator.analyze_and_generate()
 
 #### IPO
 
 | 区分 | 内容 |
 |-----|------|
-| **Input** | `chunk_text`: str（分析対象のチャンクテキスト） |
-| **Process** | 1. 分析プロンプト構築<br>2. LLM呼び出し（temperature=0.1）<br>3. JSON応答パース<br>4. バリデーション（qa_count: 0-5, importance_score: 0.0-1.0）<br>5. エラー時はフォールバック |
-| **Output** | `Dict`: {qa_count, key_topics, importance_score, complexity, reasoning} |
+| **Input** | `chunk_text`: str（分析・生成対象のチャンクテキスト） |
+| **Process** | 1. `COMBINED_PROMPT` を構築（分析基準＋生成ガイドラインを内包）<br>2. `self.llm.generate_structured()` を1回呼び出し（`response_schema=SmartQAResult`, `temperature=0.2`, JSON mode）<br>3. スキーマ準拠の `SmartQAResult` を取得（`qa_count` は 0-5、`importance_score` は 0.0-1.0 をスキーマで保証） |
+| **Output** | `SmartQAResult`: {qa_count, key_topics, importance_score, complexity, reasoning, qa_pairs} |
 
 #### プロセスフロー
 
 ```mermaid
 flowchart TD
-    A[chunk_text受信] --> B[分析プロンプト構築]
-    B --> C[_generate_content呼び出し]
-    C --> D{成功?}
-    D -->|Yes| E[Markdownブロック除去]
-    E --> F[JSONパース]
-    F --> G{パース成功?}
-    G -->|Yes| H[バリデーション]
-    H --> I[qa_count: 0-5にクリップ]
-    I --> J[importance_score: 0.0-1.0にクリップ]
-    J --> K[key_topics補完]
-    K --> L[分析結果返却]
-    D -->|No| M[フォールバック処理]
-    G -->|No| M
-    M --> N[文字数ベース判定]
-    N --> O[デフォルト値設定]
-    O --> L
+    A["chunk_text受信"] --> B["COMBINED_PROMPT構築"]
+    B --> C["llm.generate_structured 呼び出し（JSON mode）"]
+    C --> D["SmartQAResult（スキーマ準拠）取得"]
+    D --> E["SmartQAResult返却"]
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D,E default
 ```
 
-#### 出力構造
+#### 出力構造（SmartQAResult）
 
 ```python
 {
-    'qa_count': int,           # 生成すべきQ/A数（0-5）
-    'key_topics': List[str],   # 主要トピック
-    'importance_score': float, # 重要度（0.0-1.0）
-    'complexity': str,         # 複雑さ（low/medium/high）
-    'reasoning': str           # 判断理由
+    'qa_count': int,                 # 生成すべきQ/A数（0-5）
+    'key_topics': List[str],         # 主要トピック
+    'importance_score': float,       # 重要度（0.0-1.0）
+    'complexity': str,               # 複雑さ（low/medium/high）
+    'reasoning': str,                # 判断理由
+    'qa_pairs': List[SmartQAPair]    # 生成Q/A（qa_count個。0なら空リスト）
 }
-```
 
----
-
-### SmartQAGenerator.generate_qa_pairs()
-
-#### IPO
-
-| 区分 | 内容 |
-|-----|------|
-| **Input** | `chunk_text`: str（チャンクテキスト）<br>`analysis`: Optional[Dict]（分析結果、Noneの場合は自動分析） |
-| **Process** | 1. 分析結果がない場合はanalyze_chunk実行<br>2. qa_count=0ならスキップ<br>3. トピックヒント・重要度ヒント構築<br>4. Q/A生成プロンプト構築<br>5. LLM呼び出し（temperature=0.3）<br>6. JSON応答パース<br>7. トピック欠損補完 |
-| **Output** | `List[Dict]`: [{question, answer, topic}, ...] |
-
-#### プロセスフロー
-
-```mermaid
-flowchart TD
-    A[chunk_text, analysis受信] --> B{analysis存在?}
-    B -->|No| C[analyze_chunk実行]
-    B -->|Yes| D[qa_count取得]
-    C --> D
-    D --> E{qa_count == 0?}
-    E -->|Yes| F[空リスト返却]
-    E -->|No| G[ヒント構築]
-    G --> H[topics_hint生成]
-    G --> I[importance_hint生成]
-    H --> J[Q/A生成プロンプト構築]
-    I --> J
-    J --> K[_generate_content呼び出し]
-    K --> L{成功?}
-    L -->|Yes| M[Markdownブロック除去]
-    M --> N[JSONパース]
-    N --> O[件数チェック・警告]
-    O --> P[トピック欠損補完]
-    P --> Q[Q/Aリスト返却]
-    L -->|No| R[空リスト返却]
-```
-
-#### 出力構造
-
-```python
-[
-    {
-        'question': str,  # 質問文
-        'answer': str,    # 回答文
-        'topic': str      # トピック（1-3単語）
-    },
-    ...
-]
+# SmartQAPair
+{
+    'question': str,  # 質問文
+    'answer': str,    # 回答文（50-150文字程度）
+    'topic': str      # トピック（1-3単語）
+}
 ```
 
 ---
@@ -331,24 +277,26 @@ flowchart TD
 | 区分 | 内容 |
 |-----|------|
 | **Input** | `chunk_text`: str（チャンクテキスト） |
-| **Process** | 1. analyze_chunk実行<br>2. generate_qa_pairs実行（分析結果を渡す）<br>3. 結果統合<br>4. エラー時は失敗結果返却 |
+| **Process** | 1. analyze_and_generate実行（構造化出力1回）<br>2. `SmartQAResult` を analysis / qa_pairs の dict に整形<br>3. 結果統合<br>4. エラー時は失敗結果（success=False）返却 |
 | **Output** | `Dict`: {analysis, qa_pairs, success} |
 
 #### プロセスフロー
 
 ```mermaid
 flowchart TD
-    A[chunk_text受信] --> B[try開始]
-    B --> C[analyze_chunk実行]
-    C --> D[analysis取得]
-    D --> E[generate_qa_pairs実行]
-    E --> F[qa_pairs取得]
-    F --> G[成功結果構築]
-    G --> H[結果返却]
-    B --> I[except発生]
-    I --> J[エラーログ出力]
-    J --> K[失敗結果構築]
+    A["chunk_text受信"] --> B["try開始"]
+    B --> C["analyze_and_generate実行（構造化出力1回）"]
+    C --> D["SmartQAResult取得"]
+    D --> E["analysis / qa_pairs に整形"]
+    E --> G["成功結果構築"]
+    G --> H["結果返却"]
+    B --> I["except発生"]
+    I --> J["エラーログ出力"]
+    J --> K["失敗結果構築（success=False）"]
     K --> H
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D,E,G,H,I,J,K default
 ```
 
 #### 出力構造
@@ -377,14 +325,17 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[results受信] --> B[total_chunks = len]
-    B --> C[total_qa = sum of qa_pairs]
-    C --> D[qa_distribution計算]
-    D --> E[avg_qa_per_chunk計算]
-    E --> F[importance_scores抽出]
-    F --> G[avg_importance計算]
-    G --> H[統計結果構築]
-    H --> I[結果返却]
+    A["results受信"] --> B["total_chunks = len"]
+    B --> C["total_qa = sum of qa_pairs"]
+    C --> D["qa_distribution計算"]
+    D --> E["avg_qa_per_chunk計算"]
+    E --> F["importance_scores抽出"]
+    F --> G["avg_importance計算"]
+    G --> H["統計結果構築"]
+    H --> I["結果返却"]
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D,E,F,G,H,I default
 ```
 
 #### 出力構造
@@ -408,8 +359,8 @@ flowchart TD
 ```python
 from qa_generation.smart_qa_generator import SmartQAGenerator
 
-# 初期化
-generator = SmartQAGenerator(model="gemini-2.0-flash")
+# 初期化（Ollama・ローカルLLM。APIキー不要）
+generator = SmartQAGenerator(model="gemma4:e4b")
 
 # 単一チャンク処理
 result = generator.process_chunk(chunk_text)
@@ -441,17 +392,17 @@ print(f"総Q/A数: {stats['total_qa_pairs']}")
 print(f"平均Q/A数/チャンク: {stats['avg_qa_per_chunk']:.2f}")
 ```
 
-### 分析と生成を分離する場合
+### 分析結果と生成Q/Aを直接扱う場合
 
 ```python
-# Step 1: 分析のみ
-analysis = generator.analyze_chunk(chunk_text)
-print(f"推奨Q/A数: {analysis['qa_count']}")
-print(f"主要トピック: {analysis['key_topics']}")
+# 分析＋生成を構造化出力1回で実行（SmartQAResult を直接取得）
+result = generator.analyze_and_generate(chunk_text)
+print(f"推奨Q/A数: {result.qa_count}")
+print(f"主要トピック: {result.key_topics}")
 
-# Step 2: 分析結果を使って生成
-if analysis['qa_count'] > 0:
-    qa_pairs = generator.generate_qa_pairs(chunk_text, analysis)
+for qa in result.qa_pairs:
+    print(f"Q: {qa.question}")
+    print(f"A: {qa.answer}（topic: {qa.topic}）")
 ```
 
 ---
@@ -479,36 +430,13 @@ if analysis['qa_count'] > 0:
 
 ## エラーハンドリング
 
-### フォールバック機構
+### 構造化出力失敗時の挙動
 
-API呼び出しが失敗した場合、文字数ベースの簡易判定を使用します。
-
-```python
-# フォールバックロジック
-token_count = len(chunk_text) // 4
-
-if token_count < 50:
-    fallback_count = 0
-elif token_count < 100:
-    fallback_count = 1
-elif token_count < 200:
-    fallback_count = 2
-else:
-    fallback_count = 3
-```
+JSON mode 構造化出力（`SmartQAResult`）が失敗・例外となった場合、`process_chunk()` は `success=False` を返し、呼び出し側でそのチャンクをスキップします。文字数ベースのフォールバック判定は v3.0 で廃止されました。
 
 ### エラー時の戻り値
 
 ```python
-# analyze_chunk エラー時
-{
-    'qa_count': <フォールバック値>,
-    'key_topics': [],
-    'importance_score': 0.5,
-    'complexity': 'medium',
-    'reasoning': '分析エラーのため文字数ベースで決定: <エラー内容>'
-}
-
 # process_chunk エラー時
 {
     'analysis': {},
@@ -525,26 +453,30 @@ else:
 
 | パラメータ | 型 | デフォルト | 説明 |
 |----------|---|----------|------|
-| `model` | str | "gemini-2.0-flash" | 使用するGeminiモデル |
-| `api_key` | Optional[str] | None | Google API Key（Noneの場合は環境変数`GOOGLE_API_KEY`から取得） |
+| `model` | str | "gemma4:e4b" | 使用する Ollama モデル（代替: `llama3.2`） |
+| `api_key` | Optional[str] | None | 未使用。Ollama はローカル実行のため API キー不要 |
 
 ### 内部設定値
 
 | 項目 | 値 | 用途 |
 |-----|---|------|
-| 分析temperature | 0.1 | 安定した判断のため低温度 |
-| 生成temperature | 0.3 | 自然な文章生成のため中温度 |
-| Q/A数上限 | 5 | 最大Q/A数 |
+| 統合temperature | 0.2 | 分析と生成を安定して行うための低温度（構造化出力1回） |
+| max_tokens | 4096 | 構造化出力の最大トークン数 |
+| Q/A数上限 | 5 | 最大Q/A数（`SmartQAResult.qa_count` をスキーマで制約） |
 | Q/A数下限 | 0 | 最小Q/A数（スキップ） |
 | importance_score上限 | 1.0 | 最大重要度 |
 | importance_score下限 | 0.0 | 最小重要度 |
 
-### API対応
+### LLM プロバイダー・API
 
-| API | パッケージ | 状態 |
-|-----|----------|------|
-| 新API | `google.genai` | 推奨 |
-| 旧API | `google.generativeai` | フォールバック（非推奨） |
+| 項目 | 内容 |
+|-----|------|
+| プロバイダー | Ollama（ローカルLLM）に固定 |
+| クライアント生成 | `create_llm_client("ollama", default_model=...)` |
+| API 形式 | Ollama API（OpenAI 互換）。`generate_structured()`（JSON mode） |
+| APIキー | 不要（ローカル実行） |
+| 接続先 | 任意で環境変数 `OLLAMA_BASE_URL` を指定可能 |
+| コスト | ローカル実行のため API コストは発生しない（トークン集計のみ） |
 
 ---
 
@@ -560,5 +492,13 @@ else:
 ---
 
 **作成日**: 2025-01-27
+**最終更新**: 2026-06-21
 **対象ファイル**: `qa_generation/smart_qa_generator.py`
-**バージョン**: v2.5
+**バージョン**: v3.0
+
+## 変更履歴
+
+| 日付 | 内容 |
+|-----|------|
+| 2025-01-27 | 初版（v2.5・2段階方式） |
+| 2026-06-21 | Ollama ネイティブ化の表記統一・Mermaid §7 スタイル整備（v3.0：分析＋生成の構造化出力1回への統合を反映） |

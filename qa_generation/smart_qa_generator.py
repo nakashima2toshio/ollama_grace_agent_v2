@@ -54,8 +54,7 @@ class SmartQAResult(BaseModel):
 
 class SmartQAGenerator:
     """
-    コンテンツを考慮したインテリジェントQ/A生成クラス
-    [MIGRATION] Gemini API → OpenAI API → Ollama API に移植済み
+    コンテンツを考慮したインテリジェントQ/A生成クラス（Ollama・ローカルLLM）
     """
 
     def __init__(self, model: str = "gemma4:e4b", api_key: Optional[str] = None):
@@ -68,7 +67,7 @@ class SmartQAGenerator:
             api_key: 未使用（Ollama はローカル実行のためキー不要）
         """
         self.model = model
-        # [MIGRATION openai→ollama→gemma4] ローカルLLM(Ollama)に固定
+        # ローカルLLM（Ollama）に固定
         self.llm = create_llm_client("ollama", default_model=self.model)
         logger.info(f"Ollama API を使用 (model={self.model})")
 
@@ -215,7 +214,7 @@ def analyze_qa_statistics(results: List[Dict]) -> Dict:
 # ============================================================
 
 if __name__ == "__main__":
-    # [MIGRATION openai→ollama] Ollama はローカルLLMのため API KEY 不要
+    # Ollama はローカルLLMのため API キー不要
 
     # ジェネレーター初期化
     generator = SmartQAGenerator()

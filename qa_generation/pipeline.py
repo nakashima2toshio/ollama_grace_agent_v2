@@ -21,7 +21,7 @@ qa_generation/pipeline.py - Q/A生成パイプライン制御モジュール（v
   # チャンク済みCSVからQ/A生成
   pipeline = QAPipeline(
       input_file="output_chunked/data_chunks.csv",
-      model="gpt-5.4-mini",  # [MIGRATION] "claude-sonnet-4-6" → "gpt-5.4-mini"
+      model="gemma4:e4b",
       output_dir="qa_output/pipeline"
   )
   result = pipeline.run(
@@ -53,7 +53,7 @@ class QAPipeline:
     def __init__(self,
                  dataset_name: Optional[str] = None,
                  input_file: Optional[str] = None,
-                 model: str = "gemma4:e4b",  # [MIGRATION openai→ollama→gemma4] "gpt-5.4-mini" → "llama3.2" → "gemma4:e4b"
+                 model: str = "gemma4:e4b",  # Ollama 既定モデル
                  output_dir: str = "qa_output/pipeline",
                  max_docs: Optional[int] = None,
                  client: Optional[LLMClient] = None):
@@ -378,7 +378,7 @@ class QAPipeline:
 
         # use_smart_generationをCeleryタスクに渡す
         tasks = submit_unified_qa_generation(
-            chunks, self.config, self.model, provider="ollama",  # [MIGRATION openai→ollama] "openai" → "ollama"
+            chunks, self.config, self.model, provider="ollama",
             use_smart_generation=use_smart_generation
         )
 
