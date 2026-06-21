@@ -4,6 +4,7 @@
 
 | 日付 | バージョン | 変更内容 |
 |-----|----------|---------|
+| 2026-06-21 | v3.0 | Ollama ネイティブ化の表記統一 |
 | 2025-01-28 | v3.0 | pipeline.py v3.0対応、チャンク処理の外部化、make_qa.py引数整理 |
 | 2025-01-26 | v2.x | 初版作成 |
 
@@ -82,7 +83,7 @@
 | ファイル | 役割 | v3.0変更 |
 |---------|------|---------|
 | `pipeline.py` | Q/A生成パイプライン制御 | **チャンク処理削除**、SmartQAGenerator統合 |
-| `smart_qa_generator.py` | スマートQ/A生成エンジン | google.genai API対応 |
+| `smart_qa_generator.py` | スマートQ/A生成エンジン | Ollama API（JSON mode）対応 |
 | `evaluation.py` | カバレッジ分析 | **config.py依存削除**、統一閾値 |
 | `semantic.py` | セマンティック分析・埋め込み | 変更なし |
 | `data_io.py` | データ入出力 | 変更なし |
@@ -186,7 +187,7 @@ class QAPipeline:
     def __init__(self,
                  dataset_name: str = None,
                  input_file: str = None,      # チャンク済みCSV
-                 model: str = "gemini-2.0-flash",
+                 model: str = "gemma4:e4b",
                  output_dir: str = "qa_output/pipeline",
                  max_docs: int = None):
         """
@@ -249,13 +250,13 @@ def _load_chunks_from_csv(self, csv_path: str) -> List[Dict]:
 class SmartQAGenerator:
     """コンテンツを考慮したインテリジェントQ/A生成（v2.5）"""
 
-    def __init__(self, model: str = "gemini-2.0-flash", api_key: str = None):
+    def __init__(self, model: str = "gemma4:e4b", api_key: str = None):
         """
         初期化
 
         API対応:
-        - 新API: google.genai（推奨）
-        - 旧API: google.generativeai（フォールバック）
+        - Ollama API（JSON mode 構造化出力、ローカル実行）
+        - プロバイダーは Ollama に固定（api_key 未使用・ローカル実行のためキー不要）
         """
 
     def analyze_chunk(self, chunk_text: str) -> Dict:
@@ -319,7 +320,7 @@ class SmartQAGenerator:
 
 ```python
 def run_registration(csv_path, collection_name, recreate=False,
-                    batch_size=100, provider="gemini", ui_output_dir="qa_output"):
+                    batch_size=100, provider="ollama", ui_output_dir="qa_output"):
     """
     Q/A CSVをQdrantに登録
 
@@ -347,7 +348,7 @@ class QdrantDataFetcher:
     def fetch_collection_info(collection_name) -> Dict
 
 # ===== コレクション管理 =====
-def create_or_recreate_collection_for_qdrant(client, name, recreate, vector_size=3072)
+def create_or_recreate_collection_for_qdrant(client, name, recreate, vector_size=768)
 def get_collection_stats(client, collection_name) -> Optional[Dict]
 
 # ===== データ処理・登録 =====
@@ -423,7 +424,7 @@ python qa_qdrant/make_qa.py [OPTIONS]
 --input-file PATH        # チャンク済みCSVファイルパス
 
 # === 共通パラメータ ===
---model NAME             # LLMモデル (default: gemini-2.0-flash)
+--model NAME             # LLMモデル (default: gemma4:e4b)
 --output DIR             # 出力ディレクトリ (default: qa_output/pipeline)
 --max-docs N             # 処理する最大チャンク数
 
@@ -464,7 +465,7 @@ python qa_qdrant/make_qa_register_qdrant.py [OPTIONS]
 --block-size N           # 結合する行数 (default: 400)
 
 # === Q/A生成オプション ===
---model NAME             # LLMモデル (default: gemini-2.0-flash)
+--model NAME             # LLMモデル (default: gemma4:e4b)
 --use-smart-generation   # スマート生成有効 (default: True)
 --no-smart-generation    # 従来方式
 --batch-chunks N         # バッチあたりのチャンク数 (default: 3)
@@ -475,7 +476,7 @@ python qa_qdrant/make_qa_register_qdrant.py [OPTIONS]
 --collection NAME        # コレクション名（必須）
 --recreate               # コレクション再作成
 --batch-size N           # 埋め込みバッチサイズ (default: 100)
---provider NAME          # gemini or openai (default: gemini)
+--provider NAME          # ollama（既定・固定。ローカル実行のため変更不要）
 
 # === 出力オプション ===
 --output DIR             # Q/A出力ディレクトリ (default: qa_output/pipeline)
@@ -497,7 +498,7 @@ python qa_qdrant/register_to_qdrant.py [OPTIONS]
 
 # === ベクトル化設定 ===
 --text-col NAME          # ベクトル化対象カラム（自動検出可）
---provider NAME          # gemini or openai (default: gemini)
+--provider NAME          # ollama（既定・固定。ローカル実行のため変更不要）
 
 # === 出力設定 ===
 --normalize-filename     # ファイル名正規化 (default: True)
@@ -656,15 +657,15 @@ chunking/
 ## 9. 環境変数
 
 ```bash
-# 必須
-GOOGLE_API_KEY=your_gemini_api_key
+# APIキー不要（Ollama はローカル実行）
 
-# オプション（OpenAI使用時）
-OPENAI_API_KEY=your_openai_api_key
+# Ollama 接続先（オプション、未指定時は localhost:11434）
+OLLAMA_BASE_URL=http://localhost:11434
 
 # オプション（設定変更）
-EMBEDDING_PROVIDER=gemini  # or openai
-LLM_PROVIDER=gemini        # or openai
+EMBEDDING_PROVIDER=ollama  # 既定
+LLM_PROVIDER=ollama        # 既定
+OLLAMA_DEFAULT_MODEL=gemma4:e4b  # 既定モデル
 
 # Celery（並列処理時）
 CELERY_BROKER_URL=redis://localhost:6379/0
@@ -681,11 +682,12 @@ CELERY_RESULT_BACKEND=redis://localhost:6379/0
 - **2段階処理**: 分析（temperature=0.1）→ 生成（temperature=0.3）
 - **フォールバック**: API障害時は文字数ベースで簡易判定
 
-### 10.2 Gemini API
+### 10.2 Ollama API
 
-- **google.genai** パッケージ使用（新API）
-- 埋め込み: 3072次元（Gemini最大精度）
-- フォールバック: google.generativeai（旧API）
+- **Ollama** によるローカルLLM実行（`create_llm_client("ollama")`）
+- 構造化出力: JSON mode（`{"qa_pairs": [...]}`）
+- 埋め込み: `nomic-embed-text`（768次元）
+- APIキー不要・ローカル実行のためコストなし（トークン集計のみ）
 
 ### 10.3 並列処理
 
@@ -701,4 +703,4 @@ CELERY_RESULT_BACKEND=redis://localhost:6379/0
 
 ---
 
-*Last Updated: 2025-01-28 (v3.0)*
+*Last Updated: 2026-06-21 (v3.0)*

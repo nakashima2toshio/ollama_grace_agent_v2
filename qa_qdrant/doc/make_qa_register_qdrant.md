@@ -1,6 +1,6 @@
 # make_qa_register_qdrant.py - Q/A生成+Qdrant登録 統合CLIツール ドキュメント
 
-**Version 1.0** | 最終更新: 2025-01-29
+**Version 1.0** | 最終更新: 2026-06-21
 
 ---
 
@@ -43,7 +43,8 @@
 ### 前提条件
 
 - Qdrant Dockerコンテナが起動していること（`docker-compose up -d`）
-- `GOOGLE_API_KEY` 環境変数が設定されていること
+- Ollama がローカルで起動していること（`ollama list` / `curl http://localhost:11434/api/tags` で確認、必要なら `OLLAMA_BASE_URL` を設定）。APIキーは不要（ローカル実行）
+- 使用するモデルが pull 済みであること（例: `ollama pull gemma4:e4b`、`ollama pull nomic-embed-text`）
 - Celery使用時は事前にワーカーを起動（`./start_celery.sh restart -c 8`）
 
 ---
@@ -75,15 +76,15 @@ flowchart TB
     end
 
     subgraph EXTERNAL["外部サービス層"]
-        GEMINI_LLM[Gemini LLM API]
-        GEMINI_EMB[Gemini Embedding API]
+        GEMINI_LLM["Ollama LLM (gemma4:e4b)"]
+        GEMINI_EMB["Ollama Embedding (nomic-embed-text)"]
         QDRANT[(Qdrant Vector DB)]
     end
 
     subgraph STORAGE["ストレージ層"]
-        INPUT[入力ファイル<br>CSV/TXT]
-        QA_CSV[Q/AペアCSV]
-        UI_CSV[UI用CSV]
+        INPUT["入力ファイル CSV/TXT"]
+        QA_CSV["Q/AペアCSV"]
+        UI_CSV["UI用CSV"]
     end
 
     USER --> TERMINAL
@@ -103,6 +104,15 @@ flowchart TB
 
     INPUT --> MAIN
     QA_CSV --> REG_FUNC
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class USER,TERMINAL,MAIN,PIPELINE,SMART_GEN,CELERY,REG_FUNC,QDRANT_SVC,GEMINI_LLM,GEMINI_EMB,QDRANT,INPUT,QA_CSV,UI_CSV default
+style CLI fill:#1a1a1a,stroke:#fff,color:#fff
+style ENTRY fill:#1a1a1a,stroke:#fff,color:#fff
+style PHASE1 fill:#1a1a1a,stroke:#fff,color:#fff
+style PHASE2 fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+style STORAGE fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 1.2 データフロー
@@ -144,9 +154,9 @@ flowchart TB
     end
 
     subgraph FILE_TYPE["ファイル形式別処理"]
-        TXT_FLOW[TXT: チャンク作成+Q/A生成]
-        CSV_QA[CSV+Q/Aカラム: 登録のみ]
-        CSV_TEXT[CSV+テキストカラム: Q/A生成+登録]
+        TXT_FLOW["TXT: チャンク作成+Q/A生成"]
+        CSV_QA["CSV+Q/Aカラム: 登録のみ"]
+        CSV_TEXT["CSV+テキストカラム: Q/A生成+登録"]
     end
 
     MAIN --> ARGPARSE
@@ -163,6 +173,12 @@ flowchart TB
     CSV_QA --> PHASE2
     PHASE2 --> RUN_REG
     RUN_REG --> SUMMARY
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class MAIN,RUN_REG,COMBINE,NORMALIZE,ARGPARSE,VALIDATE,DETECT_TYPE,PHASE1,PHASE2,SUMMARY,TXT_FLOW,CSV_QA,CSV_TEXT default
+style MAIN_MODULE fill:#1a1a1a,stroke:#fff,color:#fff
+style MAIN_FLOW fill:#1a1a1a,stroke:#fff,color:#fff
+style FILE_TYPE fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 2.2 外部依存関係
@@ -354,7 +370,7 @@ def main() -> None
 | 項目 | 内容 |
 |------|------|
 | **Input** | CLI引数（`sys.argv`経由） |
-| **Process** | 1. 引数解析・検証<br>2. APIキー確認<br>3. ファイル形式判定（TXT/CSV）<br>4. **Phase 1**: Q/A生成（`QAPipeline.run()`）<br>5. **Phase 2**: Qdrant登録（`run_registration()`）<br>6. 完了サマリー出力 |
+| **Process** | 1. 引数解析・検証（Ollama はローカル実行のため APIキー確認なし）<br>2. ファイル形式判定（TXT/CSV）<br>3. **Phase 1**: Q/A生成（`QAPipeline.run()`）<br>4. **Phase 2**: Qdrant登録（`run_registration()`）<br>5. 完了サマリー出力 |
 | **Output** | `None`（終了コードで結果を返す） |
 
 **ファイル形式別処理フロー**:
@@ -371,7 +387,7 @@ def main() -> None
 | コード | 説明 |
 |--------|------|
 | `0` | 正常終了 |
-| `1` | エラー終了（APIキー未設定、ファイル不在、処理失敗等） |
+| `1` | エラー終了（入力指定エラー、ファイル不在、処理失敗等） |
 
 ---
 
@@ -396,7 +412,7 @@ def main() -> None
 
 | 引数 | 型 | デフォルト | 説明 |
 |------|------|-----------|------|
-| `--model` | str | `gemini-2.0-flash` | 使用するLLMモデル |
+| `--model` | str | `gemma4:e4b` | 使用するLLMモデル（Ollama / ローカルLLM。代替: `llama3.2`） |
 | `--max-docs` | int | `None` | 処理する最大文書数 |
 | `--use-celery` | flag | `False` | Celery並列処理を使用 |
 | `-c`, `--concurrency` | int | `8` | 並列タスク数 |
@@ -416,7 +432,8 @@ def main() -> None
 | `--collection` | str | **必須** | Qdrantコレクション名 |
 | `--recreate` | flag | `False` | コレクションを再作成 |
 | `--batch-size` | int | `100` | Embeddingバッチサイズ |
-| `--provider` | str | `gemini` | Embeddingプロバイダー |
+| `--provider` | str | `ollama` | Embeddingプロバイダー（`nomic-embed-text` / 768次元） |
+| `--limit` | int | `None` | 登録件数の上限（動作確認用。`None`で全件登録） |
 
 ### 5.5 出力オプション
 
@@ -440,7 +457,7 @@ python qa_qdrant/make_qa_register_qdrant.py \
   --input-file output_chunked/cc_news_5per_chunks.csv \
   --collection cc_news_5per \
   --use-celery \
-  --model gemini-2.5-flash \
+  --model gemma4:e4b \
   --concurrency 8 \
   --text-column text \
   --combine-rows \
@@ -455,7 +472,7 @@ python qa_qdrant/make_qa_register_qdrant.py \
   --input-file output_chunked/wikipedia_ja_5per_chunked.csv \
   --collection wikipedia_ja_5per \
   --use-celery \
-  --model gemini-2.5-flash \
+  --model gemma4:e4b \
   --concurrency 3 \
   --text-column text \
   --combine-rows \
@@ -523,6 +540,7 @@ python qa_qdrant/make_qa_register_qdrant.py \
 | バージョン | 変更内容 |
 |-----------|---------|
 | 1.0 | 初版作成 |
+| 2026-06-21 | Ollama ネイティブ化の表記統一・Mermaid §7 スタイル整備 |
 
 ---
 
@@ -573,6 +591,12 @@ flowchart LR
     QDRANT_SVC --> UPSERT[upsert_points_to_qdrant]
     QDRANT_SVC --> BUILD[build_points_for_qdrant]
     WRAPPER --> CLIENT[create_qdrant_client]
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class MAIN,SYS,OS,ARGPARSE,LOGGING,RE,PATHLIB,TEMPFILE,PANDAS,PIPELINE,CONFIG,QDRANT_SVC,WRAPPER,QA_PIPE,DATASET,CREATE_COLL,EMBED,UPSERT,BUILD,CLIENT default
+style STDLIB fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+style INTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ---
@@ -584,9 +608,9 @@ flowchart TD
     START([開始]) --> PARSE[引数解析]
     PARSE --> VALIDATE{入力検証}
     VALIDATE -->|エラー| ERROR1[エラー終了]
-    VALIDATE -->|OK| CHECK_KEY{APIキー確認}
+    VALIDATE -->|OK| CHECK_KEY{Ollama接続確認}
 
-    CHECK_KEY -->|未設定| ERROR2[エラー終了]
+    CHECK_KEY -->|未起動| ERROR2[エラー終了]
     CHECK_KEY -->|OK| CHECK_FILE{入力ファイル存在?}
 
     CHECK_FILE -->|不在| ERROR3[エラー終了]
@@ -624,6 +648,9 @@ flowchart TD
     ERROR5 --> EXIT1
     ERROR6 --> EXIT1
     ERROR7 --> EXIT1
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class START,PARSE,VALIDATE,ERROR1,CHECK_KEY,ERROR2,CHECK_FILE,ERROR3,DETECT_TYPE,TXT_FLOW,CSV_CHECK,ERROR4,SKIP_QA,COMBINE_CHECK,ERROR5,COMBINE,QA_GEN,CHECK_QA,ERROR6,PHASE2,RUN_REG,CHECK_REG,ERROR7,SUMMARY,END,EXIT1 default
 ```
 
 ---

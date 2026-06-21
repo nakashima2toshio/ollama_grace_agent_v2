@@ -1,6 +1,6 @@
 # Celery + スマート生成 クイックスタートガイド
 
-**最終更新**: 2025-01-20
+**最終更新**: 2026-06-21
 **バージョン**: v2.1
 
 ---
@@ -215,7 +215,7 @@ config = {'type': 'test', 'qa_per_chunk': 3}
 tasks = submit_unified_qa_generation(
     chunks=[chunk],
     config=config,
-    model="gemini-2.0-flash",
+    model="gemma4:e4b",
     use_smart_generation=True
 )
 
@@ -349,8 +349,10 @@ tail -f logs/celery_qa_*.log
 # ログでエラーを確認
 grep "ERROR" logs/celery_qa_*.log
 
-# 解決策: APIキーを確認
-echo $GOOGLE_API_KEY
+# 解決策: Ollama が起動しているか確認（APIキー不要・ローカル実行）
+ollama list
+curl http://localhost:11434/api/tags
+# 必要に応じて OLLAMA_BASE_URL を確認（任意）
 ```
 
 ---

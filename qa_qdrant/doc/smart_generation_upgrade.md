@@ -106,7 +106,7 @@ def _generate_with_celery(self, chunks: List[Dict], workers: int, batch_size: in
     """Celeryを使用した非同期生成"""
     # ...
     tasks = submit_unified_qa_generation(
-        processed_chunks, self.config, self.model, provider="gemini",
+        processed_chunks, self.config, self.model, provider="ollama",
         use_smart_generation=use_smart_generation  # ✨ 追加
     )
 ```
@@ -143,7 +143,7 @@ make_qa_register_qdrant.py - Q/A生成からQdrant登録までを完結する統
 ```python
 # QA生成パラメータ
 group_gen = parser.add_argument_group("QA Generation Options")
-group_gen.add_argument("--model", type=str, default="gemini-2.0-flash")
+group_gen.add_argument("--model", type=str, default="gemma4:e4b")
 group_gen.add_argument("--max-docs", type=int, default=None)
 # ... 他のオプション ...
 
@@ -169,10 +169,9 @@ group_gen.add_argument(
 ##### 2-3. モード表示ログ
 
 ```python
-# APIキー確認
-if not os.getenv("GOOGLE_API_KEY"):
-    logger.error("GOOGLE_API_KEYが設定されていません")
-    sys.exit(1)
+# Ollama 稼働確認（APIキー不要・ローカル実行）
+# 例: `ollama list` / `curl http://localhost:11434/api/tags` で起動を確認
+# 必要に応じて OLLAMA_BASE_URL を参照（任意）
 
 # ✨ スマート生成モードのログ表示
 logger.info("")
@@ -249,7 +248,7 @@ result = pipeline.run(
 - ✅ 効率的（不要なQ/A生成を回避）
 - ✅ 高品質（主要トピックを確実にカバー）
 - ❌ 低速（2倍の時間）
-- ❌ 高コスト（約2倍のAPI呼び出し）
+- ❌ LLM呼び出しが約2倍（ローカル実行のため API コストは発生しない）
 
 ---
 
@@ -320,7 +319,7 @@ Phase 1: QA Generation Pipeline
 ### 従来方式を使うべき場合（`--no-smart-generation`）
 
 - ✅ 大規模データセット（10,000+チャンク）
-- ✅ コスト最適化が必要
+- ✅ 処理量の最適化が必要（ローカル実行のため API コストは発生しない）
 - ✅ 高速処理が必要
 - ✅ 安定性重視（本番環境）
 
@@ -389,9 +388,9 @@ python make_qa_register_qdrant.py \
 
 ## ⚠️ 注意事項
 
-### 1. API コスト
+### 1. 処理量
 
-スマート生成はLLM呼び出しが2倍になるため、**コストも約2倍**になります。
+スマート生成はLLM呼び出しが2倍になります（ローカル実行のため API コストは発生しない・トークン集計のみ）。
 
 ### 2. 処理時間
 

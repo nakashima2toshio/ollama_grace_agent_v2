@@ -88,7 +88,7 @@ qa_qdrant/
 | `DatasetConfig` | データセット設定 |
 | `QAConfig` | Q/A生成設定 |
 | `QdrantConfig` | Qdrant接続設定 |
-| `GeminiConfig` | Gemini API設定 |
+| `GeminiConfig` | Ollama モデル設定（GeminiConfig） |
 | `CeleryConfig` | Celery設定 |
 | `PathConfig` | パス設定 |
 | `DATASET_CONFIGS` | グローバル変数（後方互換） |
@@ -193,9 +193,8 @@ qa_qdrant/
 | クラス/関数 | 説明 |
 |------------|------|
 | `LLMClient` | **抽象基底クラス**: LLMクライアント |
-| `GeminiClient` | Gemini LLMクライアント |
-| `OpenAIClient` | OpenAI LLMクライアント |
-| `create_llm_client()` | **ファクトリ関数**: クライアント生成 |
+| `OllamaClient` | Ollama LLMクライアント（ローカルLLM） |
+| `create_llm_client()` | **ファクトリ関数**: クライアント生成（`create_llm_client("ollama")`） |
 | `LLMClient.generate_content()` | コンテンツ生成 |
 | `LLMClient.generate_structured()` | 構造化出力生成 |
 | `LLMClient.count_tokens()` | トークン数カウント |
@@ -204,9 +203,8 @@ qa_qdrant/
 | クラス/関数 | 説明 |
 |------------|------|
 | `EmbeddingClient` | **抽象基底クラス**: Embeddingクライアント |
-| `GeminiEmbedding` | Gemini Embeddingクライアント |
-| `OpenAIEmbedding` | OpenAI Embeddingクライアント |
-| `create_embedding_client()` | **ファクトリ関数**: クライアント生成 |
+| Ollama Embedding | `helper_embedding` 経由のEmbeddingクライアント（`nomic-embed-text`、768次元） |
+| `create_embedding_client()` | **ファクトリ関数**: クライアント生成（`create_embedding_client("ollama")`） |
 | `get_embedding_dimensions()` | 次元数取得 |
 | `EmbeddingClient.embed_text()` | 単一テキスト埋め込み |
 | `EmbeddingClient.embed_texts()` | バッチ埋め込み |
@@ -313,7 +311,7 @@ make_qa_register_qdrant.py
            │
            ├─ qdrant_service.load_csv_for_qdrant()
            ├─ qdrant_service.embed_texts_for_qdrant()
-           │      └─ helper_embedding.GeminiEmbedding.embed_texts()
+           │      └─ helper_embedding（create_embedding_client("ollama")）.embed_texts()
            ├─ qdrant_service.build_points_for_qdrant()
            └─ qdrant_service.upsert_points_to_qdrant()
 ```

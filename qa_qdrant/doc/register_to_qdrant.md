@@ -1,6 +1,6 @@
 # register_to_qdrant.py - CSVデータQdrant登録 CLIツール ドキュメント
 
-**Version 1.0** | 最終更新: 2025-01-29
+**Version 1.0** | 最終更新: 2026-06-21
 
 ---
 
@@ -25,7 +25,7 @@
 ### 主な責務
 
 - CSVファイルの読み込みとベクトル化対象カラムの自動検出
-- Embedding APIを使用したテキストのベクトル化
+- Ollama Embedding（ローカル実行）を使用したテキストのベクトル化
 - Qdrantコレクションの作成・再作成
 - バッチ処理によるスケーラブルなデータ登録
 - ファイル名の正規化（日時サフィックス除去）
@@ -43,7 +43,7 @@
 ### 前提条件
 
 - Qdrant Dockerコンテナが起動していること（`docker-compose up -d`）
-- `GOOGLE_API_KEY`（Gemini使用時）または`OPENAI_API_KEY`（OpenAI使用時）が設定されていること
+- Ollama がローカルで起動していること（`ollama list` でモデル確認、`nomic-embed-text` を pull 済み）。必要に応じて `OLLAMA_BASE_URL` を設定。APIキーは不要（ローカル実行）
 
 ---
 
@@ -68,8 +68,7 @@ flowchart TB
     end
 
     subgraph EXTERNAL["外部サービス層"]
-        GEMINI[Gemini Embedding API]
-        OPENAI[OpenAI Embedding API]
+        OLLAMA[Ollama Embedding nomic-embed-text]
         QDRANT[(Qdrant Vector DB)]
     end
 
@@ -82,12 +81,19 @@ flowchart TB
     TERMINAL --> REGISTER
     REGISTER --> QDRANT_SVC
     REGISTER --> WRAPPER
-    QDRANT_SVC --> GEMINI
-    QDRANT_SVC --> OPENAI
+    QDRANT_SVC --> OLLAMA
     QDRANT_SVC --> QDRANT
     WRAPPER --> QDRANT
     INPUT_CSV --> REGISTER
     REGISTER --> UI_CSV
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class USER,TERMINAL,REGISTER,QDRANT_SVC,WRAPPER,OLLAMA,QDRANT,INPUT_CSV,UI_CSV default
+style CLI fill:#1a1a1a,stroke:#fff,color:#fff
+style ENTRY fill:#1a1a1a,stroke:#fff,color:#fff
+style SERVICE fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+style STORAGE fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 1.2 データフロー
@@ -95,7 +101,7 @@ flowchart TB
 1. ユーザーがCLI引数（入力CSV、コレクション名等）を指定して実行
 2. CSVファイルを読み込み、ベクトル化対象カラムを自動検出
 3. Qdrantクライアントを初期化し、コレクションを準備
-4. バッチ単位でEmbedding APIを呼び出しテキストをベクトル化
+4. バッチ単位でOllama Embedding（nomic-embed-text/768次元）を呼び出しテキストをベクトル化
 5. ポイントを構築してQdrantにアップサート
 6. （オプション）UI用CSVを生成
 
@@ -116,7 +122,7 @@ flowchart TB
 
     subgraph MAIN_FLOW["main() 処理フロー"]
         ARGPARSE[argparse 引数解析]
-        CHECK_KEY[APIキー確認]
+        CHECK_KEY[Ollama接続確認 APIキー不要]
         CALL_REG[register_to_qdrant呼び出し]
         EXIT_CODE[終了コード設定]
     end
@@ -142,6 +148,12 @@ flowchart TB
     DETECT_COL --> INIT_QDRANT
     INIT_QDRANT --> BATCH_LOOP
     BATCH_LOOP --> GEN_UI_CSV
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class MAIN,REG_FUNC,NORMALIZE,DETECT,ARGPARSE,CHECK_KEY,CALL_REG,EXIT_CODE,READ_CSV,DETECT_COL,INIT_QDRANT,BATCH_LOOP,GEN_UI_CSV default
+style REGISTER fill:#1a1a1a,stroke:#fff,color:#fff
+style MAIN_FLOW fill:#1a1a1a,stroke:#fff,color:#fff
+style REG_FLOW fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 2.2 外部依存関係
@@ -292,12 +304,14 @@ def register_to_qdrant(
     text_col: Optional[str] = None,
     domain: Optional[str] = None,
     max_docs: Optional[int] = None,
-    provider: str = "gemini",
     normalize_filename: bool = True,
     create_ui_csv: bool = True,
-    ui_output_dir: str = "qa_output"
+    ui_output_dir: str = "qa_output",
+    embed_workers: int = 2
 ) -> bool
 ```
+
+> Embedding は Ollama（`nomic-embed-text` / 768次元）に固定されており、プロバイダー選択引数は提供されない。
 
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
@@ -308,10 +322,10 @@ def register_to_qdrant(
 | `text_col` | Optional[str] | `None` | ベクトル化対象カラム（None=自動検出） |
 | `domain` | Optional[str] | `None` | ペイロードのdomain値（None=コレクション名） |
 | `max_docs` | Optional[int] | `None` | 登録する最大件数（None=全件） |
-| `provider` | str | `"gemini"` | Embeddingプロバイダー |
 | `normalize_filename` | bool | `True` | ファイル名正規化を行うか |
 | `create_ui_csv` | bool | `True` | UI用CSVを生成するか |
 | `ui_output_dir` | str | `"qa_output"` | UI用CSVの出力先 |
+| `embed_workers` | int | `2` | Embedding先読みの並列スレッド数（パイプライン化） |
 
 | 項目 | 内容 |
 |------|------|
@@ -325,8 +339,8 @@ def register_to_qdrant(
 |-----------|------|
 | `source` | 正規化されたファイル名 |
 | `domain` | ドメイン値（引数またはコレクション名） |
-| `embedding_provider` | 使用したプロバイダー（gemini/openai） |
-| `embedding_model` | 使用したモデル名 |
+| `embedding_provider` | 使用したプロバイダー（`ollama` 固定） |
+| `embedding_model` | 使用したモデル名（`nomic-embed-text` 固定） |
 | その他 | CSVの各カラム値 |
 
 ```python
@@ -335,8 +349,7 @@ success = register_to_qdrant(
     input_file="qa_output/qa_pairs.csv",
     collection_name="my_collection",
     recreate=True,
-    batch_size=100,
-    provider="gemini"
+    batch_size=100
 )
 print("成功" if success else "失敗")
 ```
@@ -354,7 +367,7 @@ def main() -> None
 | 項目 | 内容 |
 |------|------|
 | **Input** | CLI引数（`sys.argv`経由） |
-| **Process** | 1. `argparse`で引数を解析<br>2. 使用プロバイダーに応じたAPIキーを確認<br>3. `register_to_qdrant()`を呼び出し<br>4. 結果に応じて終了コードを設定 |
+| **Process** | 1. `argparse`で引数を解析<br>2. Ollama 接続を確認（APIキー不要・ローカル実行）<br>3. `register_to_qdrant()`を呼び出し<br>4. 結果に応じて終了コードを設定 |
 | **Output** | `None`（終了コードで結果を返す） |
 
 **終了コード**:
@@ -362,7 +375,7 @@ def main() -> None
 | コード | 説明 |
 |--------|------|
 | `0` | 正常終了（登録成功） |
-| `1` | エラー終了（APIキー未設定、登録失敗等） |
+| `1` | エラー終了（Ollama 接続失敗、入力ファイル不在、登録失敗等） |
 
 ---
 
@@ -387,7 +400,8 @@ def main() -> None
 | 引数 | 型 | デフォルト | 説明 |
 |------|------|-----------|------|
 | `--text-col` | str | `None` | ベクトル化対象のカラム名（未指定時は自動検出） |
-| `--provider` | str | `gemini` | Embeddingに使用するプロバイダー（`gemini`/`openai`） |
+
+> Embedding は Ollama（`nomic-embed-text` / 768次元）に固定。コレクションも 768 次元で作成されるため、プロバイダー選択引数（`--provider`）は提供されない。
 
 ### 5.4 データ処理設定
 
@@ -445,14 +459,13 @@ python register_to_qdrant.py \
   --batch-size 5
 ```
 
-### 6.4 OpenAI Embeddingを使用
+### 6.4 Ollama Embeddingで登録（コレクション命名規約）
 
 ```bash
-# OpenAI text-embedding-3-small を使用
+# Ollama nomic-embed-text（768次元）でコレクション *_ollama に登録
 python register_to_qdrant.py \
   --input-file qa_output/qa_pairs.csv \
-  --collection my_collection_openai \
-  --provider openai \
+  --collection my_collection_ollama \
   --recreate
 ```
 
@@ -474,6 +487,7 @@ python register_to_qdrant.py \
 | バージョン | 変更内容 |
 |-----------|---------|
 | 1.0 | 初版作成（register_csv_to_qdrant.py と register_qdrant.py を統合） |
+| 2026-06-21 | Ollama ネイティブ化の表記統一・Mermaid §7 スタイル整備 |
 
 ---
 
@@ -515,6 +529,12 @@ flowchart LR
     QDRANT_SVC --> BUILD[build_points_for_qdrant]
 
     WRAPPER --> CLIENT[create_qdrant_client]
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class REGISTER,SYS,OS,ARGPARSE,LOGGING,RE,PANDAS,QDRANT_SVC,WRAPPER,CREATE_COLL,EMBED,UPSERT,BUILD,CLIENT default
+style STDLIB fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+style INTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ---
@@ -524,8 +544,8 @@ flowchart LR
 ```mermaid
 flowchart TD
     START([開始]) --> PARSE[引数解析]
-    PARSE --> CHECK_KEY{APIキー確認}
-    CHECK_KEY -->|未設定| ERROR1[エラー終了]
+    PARSE --> CHECK_KEY{Ollama接続確認}
+    CHECK_KEY -->|接続失敗| ERROR1[エラー終了]
     CHECK_KEY -->|OK| CHECK_FILE{入力ファイル存在?}
 
     CHECK_FILE -->|不在| ERROR2[エラー終了]
@@ -566,6 +586,9 @@ flowchart TD
     ERROR2 --> EXIT1
     ERROR3 --> EXIT1
     ERROR4 --> EXIT1
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class START,PARSE,CHECK_KEY,ERROR1,CHECK_FILE,ERROR2,READ_CSV,LIMIT,APPLY_LIMIT,DETECT_COL,ERROR3,INIT_QDRANT,ERROR4,PREPARE_COLL,RECREATE,CHECK_EXISTS,CREATE,BATCH_LOOP,EMBED,BUILD_POINTS,UPSERT,MORE_BATCH,UI_CSV,GEN_CSV,SUCCESS,EXIT1 default
 ```
 
 ---
@@ -577,8 +600,8 @@ flowchart TD
 | 項目 | 現状 | 確認事項 |
 |------|------|---------|
 | バージョン情報 | 仮で1.0を設定 | 正式なバージョン番号があれば指定 |
-| Embeddingモデルバージョン | `gemini-embedding-001`, `text-embedding-3-small` | モデルバージョンの更新予定 |
-| Qdrantベクトルサイズ | Gemini: 3072, OpenAI: 1536 | `qdrant_service.py`の設定と整合性確認 |
+| Embeddingモデルバージョン | `nomic-embed-text`（Ollama / 768次元）固定 | モデルバージョンの更新予定 |
+| Qdrantベクトルサイズ | デフォルト 768（Ollama）。検出フォールバックとして 1536→`text-embedding-3-small`(OpenAI)、3072→`text-embedding-3-large`(OpenAI) を既存・異種コレクション向けに維持 | `qdrant_service.py`の設定と整合性確認 |
 | エラーハンドリング | 基本的なtry-except実装済み | リトライロジックの要否 |
 | UI用CSV出力条件 | `question`/`answer`カラム存在時のみ | 他のカラム構成への対応要否 |
 
