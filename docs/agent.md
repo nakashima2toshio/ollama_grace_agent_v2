@@ -1,6 +1,6 @@
 # agent.py - ReAct + Reflection / GRACE エージェント ドキュメント
 
-**Version 1.0** | 最終更新: 2026-06-19
+**Version 1.0** | 最終更新: 2026-06-21
 
 ---
 
@@ -653,6 +653,7 @@ __all__ = ["ReplanTrigger", "ReplanStrategy", "ReplanContext", "ReplanResult",
 | バージョン | 変更内容 |
 |-----------|---------|
 | 1.0 | 初版作成（ReAct + Reflection / GRACE の構成・IPO・Mermaid図・特徴を記述。Ollama 表記） |
+| 1.1 | Ollama ネイティブ化の表記統一・Mermaid §7 スタイル整備（2026-06-21） |
 
 ---
 
