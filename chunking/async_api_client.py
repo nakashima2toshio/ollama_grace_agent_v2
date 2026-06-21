@@ -1,17 +1,21 @@
 # async_api_client.py
 """
-非同期APIクライアント（Ollama版）
+非同期APIクライアント（Ollama ネイティブ）
 - asyncio.to_thread() で同期APIをラップ
 - Semaphore で並列数制御（固定）
 - リトライロジック（3回、指数バックオフ）
 - 構造化出力は JSON mode + スキーマをシステムプロンプトに埋め込み + model_validate_json() で実現
 
-[MIGRATION] OpenAI → Ollama (2026-05-20)
-  - OpenAI(api_key=...) → OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
-  - client.beta.chat.completions.parse() → client.chat.completions.create() + JSON mode
-  - response_format=PydanticClass → response_format={"type": "json_object"} + スキーマをプロンプトに
-  - choice.message.parsed → model_validate_json(choice.message.content)
-  - max_completion_tokens → max_tokens
+Ollama は OpenAI 互換エンドポイント（/v1）を公開しているため、`openai` SDK を
+Ollama サーバ（既定 http://localhost:11434/v1）に向けて利用する。ローカル実行のため
+API キーは不要（ダミー値 "ollama" を渡す）。
+
+実装方針:
+  - クライアント: OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
+  - 構造化出力: client.chat.completions.create() + JSON mode
+    （response_format={"type": "json_object"} + スキーマをシステムプロンプトに埋め込み）
+  - パース: model_validate_json(choice.message.content)
+  - 出力トークン上限: max_tokens
 """
 
 import asyncio
@@ -51,11 +55,11 @@ def _resolve_schema_refs(schema: dict) -> dict:
 
 class AsyncAPIClient:
     """
-    非同期APIクライアント（OpenAI版）
+    非同期APIクライアント（Ollama ネイティブ）
     - asyncio.to_thread() で同期APIをラップ
     - Semaphore で並列数制御（固定）
     - リトライロジック（3回、指数バックオフ）
-    - 構造化出力: OpenAI Structured Outputs (beta.chat.completions.parse)
+    - 構造化出力: Ollama JSON mode（response_format={"type": "json_object"} + スキーマ埋め込み）
     """
 
     def __init__(
@@ -72,7 +76,7 @@ class AsyncAPIClient:
             max_retries: リトライ回数（デフォルト: 3）
             max_output_tokens: 出力トークン制限（デフォルト: 8192）
         """
-        # [MIGRATION openai→ollama] OpenAI(api_key=...) → Ollama 互換エンドポイント
+        # Ollama の OpenAI 互換エンドポイントに接続（ローカル実行のため API キー不要）
         base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
         self.client = OpenAI(base_url=base_url, api_key="ollama")
         self.max_workers = max_workers
@@ -128,7 +132,7 @@ class AsyncAPIClient:
             try:
                 self._total_requests += 1
 
-                # [MIGRATION openai→ollama] beta.chat.completions.parse() → chat.completions.create() + JSON mode
+                # Ollama JSON mode による構造化出力（chat.completions.create + json_object）
                 # $ref/$defs を解決したフラットなスキーマを使用（llama3.2 は複雑なスキーマを解釈できない）
                 raw_schema = response_schema.model_json_schema()
                 flat_schema = _resolve_schema_refs(raw_schema)
@@ -165,7 +169,7 @@ class AsyncAPIClient:
                         f"Increase max_output_tokens or reduce block_size."
                     )
 
-                # [MIGRATION openai→ollama] choice.message.parsed → model_validate_json(choice.message.content)
+                # JSON mode の出力テキストを Pydantic スキーマで検証・パース
                 result_text = choice.message.content
                 if result_text is None:
                     raise ValueError(

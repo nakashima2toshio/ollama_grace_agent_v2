@@ -646,7 +646,7 @@ async def chunks_all_async(
             raise ValueError("text または documents のいずれかを指定してください")
         documents = [{"doc_id": 0, "text": text}]
 
-    # [MIGRATION openai→ollama] OllamaはローカルLLMのためAPI KEY不要。
+    # Ollama はローカル LLM のため API キー不要。
     client = AsyncAPIClient(
         max_workers=max_workers,
         max_retries=3,

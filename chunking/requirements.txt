@@ -1,8 +1,8 @@
 # requirements.txt
 # chunking パッケージの依存関係
  
-# OpenAI API（LLM: チャンク分割 / 3段階セマンティックチャンキング）
-# [MIGRATION] google-genai → openai
+# Ollama 用クライアント（LLM: チャンク分割 / 3段階セマンティックチャンキング）
+# Ollama は OpenAI 互換 API（/v1）を公開するため openai SDK を使用（ローカル実行・API キー不要）
 openai>=1.30.0
  
 # Data validation

@@ -182,7 +182,7 @@ python -m chunking.csv_to_chunks_text_para_modified \
 ```bash
 python make_qa_register_qdrant_modified.py \
   --input-chunks wiki_chunks.csv \
-  --collection wiki_qa \
+  --collection wiki_qa_ollama \
   --use-celery \
   --celery-workers 16 \
   --recreate
@@ -224,7 +224,7 @@ python -m chunking.csv_to_chunks_text_para_modified \
 ```bash
 python make_qa_register_qdrant_modified.py \
   --input-chunks wiki_chunks.csv \
-  --collection wikipedia_qa \
+  --collection wikipedia_qa_ollama \
   --recreate
 ```
 
@@ -236,7 +236,7 @@ python make_qa_register_qdrant_modified.py \
 # CSV → チャンク作成（自動） → Q/A生成 → Qdrant登録
 python make_qa_register_qdrant_modified.py \
   --input-csv news_articles.csv \
-  --collection news_qa \
+  --collection news_qa_ollama \
   --use-celery \
   --celery-workers 24 \
   --recreate
@@ -259,7 +259,7 @@ news_articles.csv (text/Combined_Textカラムあり)
 # Q/AペアCSV → Qdrant登録のみ
 python make_qa_register_qdrant_modified.py \
   --input-csv qa_pairs.csv \
-  --collection my_qa \
+  --collection my_qa_ollama \
   --batch-size 100 \
   --recreate
 ```
@@ -279,7 +279,7 @@ question,answer
 ```bash
 python make_qa_register_qdrant_modified.py \
   --dataset wikipedia_ja \
-  --collection wikipedia_qa \
+  --collection wikipedia_qa_ollama \
   --use-celery \
   --celery-workers 24 \
   --recreate
@@ -306,7 +306,7 @@ wc -l chunks.csv
 # ===== Phase 2: Q/A生成 + Qdrant登録 =====
 python make_qa_register_qdrant_modified.py \
   --input-chunks chunks.csv \
-  --collection my_qa \
+  --collection my_qa_ollama \
   --use-celery \
   --celery-workers 16 \
   --recreate \
@@ -314,7 +314,7 @@ python make_qa_register_qdrant_modified.py \
 
 # ===== 確認 =====
 # Qdrantに登録されたことを確認
-curl http://localhost:6333/collections/my_qa
+curl http://localhost:6333/collections/my_qa_ollama
 ```
 
 ---
@@ -334,7 +334,7 @@ python -m chunking.csv_to_chunks_text_para_modified \
 # ===== Phase 2: Q/A生成 + Qdrant登録 =====
 python make_qa_register_qdrant_modified.py \
   --input-chunks wiki_chunks.csv \
-  --collection wiki_qa \
+  --collection wiki_qa_ollama \
   --use-celery \
   --celery-workers 24 \
   --recreate
@@ -357,7 +357,7 @@ python -m chunking.csv_to_chunks_text_para_modified \
 
 python make_qa_register_qdrant_modified.py \
   --input-chunks chunks_batch1.csv \
-  --collection large_qa \
+  --collection large_qa_ollama \
   --recreate
 
 # Batch 2: 1001-2000行（続き）
@@ -382,7 +382,7 @@ python make_qa_register_qdrant_modified.py \
 #### **QA生成パラメータ**
 
 ```bash
---model MODEL_NAME            # Geminiモデル（デフォルト: gemini-2.0-flash）
+--model MODEL_NAME            # Ollamaモデル（デフォルト: gemma4:e4b、代替: llama3.2）
 --max-docs N                  # 最大処理文書数
 --use-celery                  # Celery並列処理を使用
 --celery-workers N            # Celeryワーカー数（デフォルト: 8）
@@ -399,7 +399,7 @@ python make_qa_register_qdrant_modified.py \
 --collection COLLECTION_NAME  # 登録先コレクション名（必須）
 --recreate                    # コレクションを再作成
 --batch-size N                # Embeddingバッチサイズ（デフォルト: 100）
---provider PROVIDER           # Embeddingプロバイダー（デフォルト: gemini）
+--provider PROVIDER           # Embeddingプロバイダー（デフォルト: ollama、モデル: nomic-embed-text / 768次元）
 ```
 
 ---
@@ -411,7 +411,7 @@ python make_qa_register_qdrant_modified.py \
 ```bash
 -i, --input FILE              # 入力ファイル（.txt または .csv）
 -o, --output FILE             # 出力ファイル（.csv または .txt）
--m, --model MODEL             # Geminiモデル
+-m, --model MODEL             # Ollamaモデル（デフォルト: gemma4:e4b、代替: llama3.2）
 -w, --workers N               # 並列ワーカー数（デフォルト: 8）
 -b, --block-size N            # バッチサイズ（デフォルト: 2000）
 -v, --verbose                 # 詳細ログ
@@ -443,7 +443,7 @@ python -m chunking.csv_to_chunks_text_para_modified \
 # Q/A生成 + Qdrant登録
 python make_qa_register_qdrant_modified.py \
   --input-chunks wiki_chunks.csv \
-  --collection wikipedia_qa \
+  --collection wikipedia_qa_ollama \
   --use-celery \
   --celery-workers 24 \
   --recreate
@@ -465,7 +465,7 @@ python -m chunking.csv_to_chunks_text_para_modified \
 # Q/A生成 + Qdrant登録
 python make_qa_register_qdrant_modified.py \
   --input-chunks news_chunks.csv \
-  --collection news_qa \
+  --collection news_qa_ollama \
   --batch-chunks 3 \
   --recreate
 ```
@@ -478,7 +478,7 @@ python make_qa_register_qdrant_modified.py \
 # Q/AペアCSVから直接Qdrant登録（チャンク作成・Q/A生成をスキップ）
 python make_qa_register_qdrant_modified.py \
   --input-csv existing_qa_pairs.csv \
-  --collection existing_qa \
+  --collection existing_qa_ollama \
   --batch-size 100 \
   --recreate
 ```
@@ -500,7 +500,7 @@ python -m chunking.csv_to_chunks_text_para_modified \
 # Q/A生成テスト
 python make_qa_register_qdrant_modified.py \
   --input-chunks test_chunks.csv \
-  --collection test_qa \
+  --collection test_qa_ollama \
   --recreate
 ```
 
@@ -574,29 +574,34 @@ RuntimeError: Celery workers are not running
 # または、Celeryなしで実行
 python make_qa_register_qdrant_modified.py \
   --input-chunks chunks.csv \
-  --collection my_qa \
+  --collection my_qa_ollama \
   --recreate
   # --use-celery を指定しない
 ```
 
 ---
 
-### **問題4: GOOGLE_API_KEYが設定されていない**
+### **問題4: Ollama サーバに接続できない**
 
 **エラーメッセージ:**
 
 ```
-GOOGLE_API_KEYが設定されていません
+Ollama接続エラー: Connection refused (http://localhost:11434)
 ```
 
 **対処法:**
 
 ```bash
-# 環境変数を設定
-export GOOGLE_API_KEY="your-api-key-here"
+# Ollama が起動しているか確認（APIキーは不要・ローカル実行）
+ollama list
+curl http://localhost:11434/api/tags
 
-# 確認
-echo $GOOGLE_API_KEY
+# 必要なモデルを取得
+ollama pull gemma4:e4b
+ollama pull nomic-embed-text
+
+# 任意: 接続先を変更する場合のみ OLLAMA_BASE_URL を設定（既定 http://localhost:11434）
+export OLLAMA_BASE_URL="http://localhost:11434"
 ```
 
 ---
@@ -645,7 +650,7 @@ python -m chunking.csv_to_chunks_text_para_modified \
 # または、バッチサイズを小さくする
 python make_qa_register_qdrant_modified.py \
   --input-chunks chunks.csv \
-  --collection my_qa \
+  --collection my_qa_ollama \
   --batch-size 50 \
   --recreate
 ```
@@ -742,7 +747,7 @@ python make_qa_modified.py \
 # Phase 3: 結果確認後、Qdrant登録
 python make_qa_register_qdrant_modified.py \
   --input-chunks chunks.csv \
-  --collection my_qa \
+  --collection my_qa_ollama \
   --recreate
 ```
 
@@ -759,7 +764,7 @@ python -m chunking.csv_to_chunks_text_para_modified \
 
 python make_qa_register_qdrant_modified.py \
   --input-chunks chunks.csv \
-  --collection my_qa \
+  --collection my_qa_ollama \
   --recreate 2>&1 | tee qa_registration.log
 
 # ログを分析
@@ -891,6 +896,7 @@ python -m chunking.csv_to_chunks_text_para_modified \
 
 | バージョン | 日付       | 変更内容                    |
 | ---------- | ---------- | --------------------------- |
+| 1.3.0      | 2026-06-21 | Ollama ネイティブ化（Gemini→Ollama 表記/モデル/Embedding/キーの全面置換） |
 | 1.0.0      | 2025-01-11 | 初版リリース                |
 | 1.1.0      | 2025-01-11 | チャンクCSV読み込み機能追加 |
 | 1.2.0      | 2025-01-11 | CSV入力対応機能追加         |
@@ -907,4 +913,4 @@ python -m chunking.csv_to_chunks_text_para_modified \
 ---
 
 **作成日**: 2025-01-11
-**最終更新**: 2025-01-11
+**最終更新**: 2026-06-21
