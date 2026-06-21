@@ -56,25 +56,23 @@ def select_model() -> str:
         "🤖 使用モデル",
         options=GeminiConfig.AVAILABLE_MODELS,
         index=0,
-        help="処理に使用するGeminiモデルを選択してください"
+        help="処理に使用するOllamaモデルを選択してください"
     )
     return selected
 
 
 def show_model_info(model: str) -> None:
-    """選択されたモデルの料金・制限情報を表示する"""
-    pricing = GeminiConfig.get_model_pricing(model)
+    """選択されたモデルの制限情報を表示する（Ollama はローカル実行のため API コストなし）"""
     limits = GeminiConfig.get_model_limits(model)
     st.caption(
         f"💡 {model}　|　"
-        f"入力: ${pricing['input']}/1K tokens　"
-        f"出力: ${pricing['output']}/1K tokens　|　"
-        f"最大出力: {limits.get('max_output_tokens', limits.get('max_output', 'N/A')):,} tokens"
+        f"最大出力: {limits.get('max_output_tokens', limits.get('max_output', 'N/A')):,} tokens　|　"
+        f"ローカル実行のため API コストは発生しません"
     )
 
 
 def estimate_token_usage(df: pd.DataFrame, model: str) -> None:
-    """DataFrameのCombined_Textからトークン使用量と概算コストを表示する"""
+    """DataFrameのCombined_Textからトークン使用量を表示する（ローカル実行・トークン集計のみ）"""
     if 'Combined_Text' not in df.columns:
         st.warning("Combined_Text カラムが見つかりません")
         return
@@ -83,16 +81,13 @@ def estimate_token_usage(df: pd.DataFrame, model: str) -> None:
     # 日本語: 約1.5文字/token、英語: 約4文字/token（概算）
     estimated_tokens = int(total_chars / 2.0)
 
-    pricing = GeminiConfig.get_model_pricing(model)
-    estimated_cost = (estimated_tokens / 1000) * pricing['input']
-
     col1, col2, col3 = st.columns(3)
     with col1:
         st.metric("推定トークン数", f"{estimated_tokens:,}")
     with col2:
         st.metric("総文字数", f"{total_chars:,}")
     with col3:
-        st.metric("推定コスト（入力）", f"${estimated_cost:.4f}")
+        st.metric("API コスト", "なし（ローカル実行）")
 
 
 def _import_hf_load_dataset():
