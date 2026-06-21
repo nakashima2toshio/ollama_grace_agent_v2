@@ -216,7 +216,7 @@ pytest tests/ --cov=. --cov-report=term-missing --cov-report=html
 |---|---|---:|---|---|---|---|
 | `services/qdrant_service.py` | `services/test_qdrant_service.py` | 22 | unit | 読替 | #80 | 埋め込みパラメータ、embed、build_points（安定ID・内容ハッシュ・ゼロベクトル廃止）、merge、行フィルタ。※モジュールキャッシュ分離フィクスチャ |
 | `services/cache_service.py` | `services/test_cache_service.py` | 4 | unit | そのまま | #74 | MemoryCache、cache_result デコレータ |
-| `services/config_service.py` | `services/test_config_service.py` | 6 | unit | 読替 | #79 | ConfigManager（既定 gpt-4o-mini/YAML/環境変数/再読込） |
+| `services/config_service.py` | `services/test_config_service.py` | 6 | unit | 読替 | #79 | ConfigManager（既定 gemma4:e4b/YAML/環境変数/再読込） |
 | `services/dataset_service.py` | `services/test_dataset_service.py` | 4 | unit | そのまま | #74 | データセット読込・テキスト抽出 |
 | `services/file_service.py` | `services/test_file_service.py` | 4 | unit | そのまま | #74 | ファイル入出力 |
 | `services/json_service.py` | `services/test_json_service.py` | 6 | unit | そのまま | #74 | JSON 抽出・整形・パース |
