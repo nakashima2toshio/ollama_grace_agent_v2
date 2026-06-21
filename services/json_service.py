@@ -29,7 +29,7 @@ def safe_json_serializer(obj: Any) -> Any:
     """
     カスタムJSONシリアライザー
 
-    OpenAI APIのレスポンスオブジェクトなど、
+    Ollama（OpenAI 互換）APIのレスポンスオブジェクトなど、
     標準では処理できないオブジェクトを変換
 
     Args:
@@ -56,7 +56,7 @@ def safe_json_serializer(obj: Any) -> Any:
     if isinstance(obj, datetime):
         return obj.isoformat()
 
-    # OpenAI ResponseUsage オブジェクトの場合（手動属性抽出）
+    # OpenAI 互換 usage オブジェクト（Ollama）の場合（手動属性抽出）
     if hasattr(obj, 'prompt_tokens') and hasattr(obj, 'completion_tokens'):
         return {
             'prompt_tokens': getattr(obj, 'prompt_tokens', 0),

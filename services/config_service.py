@@ -48,8 +48,7 @@ class ConfigManager:
 
     def _setup_logger(self) -> logging.Logger:
         """ロガーの設定"""
-        # [MIGRATION] 問題③修正: ロガー名を Gemini_helper → Anthropic_helper に変更
-        logger = logging.getLogger('OpenAI_helper')  # [MIGRATION anthropic→openai]
+        logger = logging.getLogger('Ollama_helper')
 
         # 既に設定済みの場合はスキップ
         if logger.handlers:
@@ -102,15 +101,14 @@ class ConfigManager:
 
     def _apply_env_overrides(self, config: Dict[str, Any]) -> None:
         """環境変数による設定オーバーライド"""
-        # OpenAI API Key（必須）
+        # Ollama はローカル実行のため API キーは不要。
+        # 以下のキーは外部プロバイダーを併用する場合の後方互換として、設定時のみ取り込む。
         if os.getenv("OPENAI_API_KEY"):
             config.setdefault("api", {})["openai_api_key"] = os.getenv("OPENAI_API_KEY")
 
-        # [MIGRATION anthropic→openai] Anthropic API Key（後方互換のため残存）
         if os.getenv("ANTHROPIC_API_KEY"):
             config.setdefault("api", {})["anthropic_api_key"] = os.getenv("ANTHROPIC_API_KEY")
 
-        # GOOGLE Gemini API Key（後方互換のため残存）
         if os.getenv("GOOGLE_API_KEY"):
             config.setdefault("api", {})["google_api_key"] = os.getenv("GOOGLE_API_KEY")
 
@@ -130,16 +128,15 @@ class ConfigManager:
         """デフォルト設定"""
         return {
             "models": {
-                # [MIGRATION anthropic→openai] デフォルトモデルを OpenAI に変更
-                "default": "gpt-4o-mini",
+                # Ollama（ローカルLLM）のデフォルトモデル
+                "default": "gemma4:e4b",
                 "available": [
-                    "gpt-4o",
-                    "gpt-4o-mini",
-                    "gpt-4.1",
-                    "gpt-4.1-mini",
-                    "o1-mini",
-                    "claude-sonnet-4-6",        # 後方互換
-                    "claude-haiku-4-5-20251001", # 後方互換
+                    "gemma4:e4b",
+                    "llama3.2",
+                    "llama3.2:3b",
+                    "qwen2.5:7b",
+                    "mistral",
+                    "gemma2",
                 ]
             },
             "api": {
@@ -175,8 +172,8 @@ class ConfigManager:
                 "performance_monitoring": True
             },
             "llm": {
-                # [MIGRATION anthropic→openai] デフォルトプロバイダーを OpenAI に変更
-                "provider": "openai"
+                # Ollama（ローカルLLM）をデフォルトプロバイダーとする
+                "provider": "ollama"
             }
         }
 

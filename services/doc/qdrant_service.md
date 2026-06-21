@@ -1,6 +1,6 @@
 # qdrant_service.py - Qdrant操作サービス ドキュメント
 
-**Version 1.3** | 最終更新: 2025-01-28
+**Version 1.4** | 最終更新: 2026-06-21
 
 ---
 
@@ -48,11 +48,11 @@
                                 ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                       外部サービス層                             │
-│  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐    │
-│  │    Qdrant      │  │    Gemini      │  │    OpenAI      │    │
-│  │    Server      │  │    API         │  │    API         │    │
-│  │    :6333       │  │   Embedding    │  │   Embedding    │    │
-│  └────────────────┘  └────────────────┘  └────────────────┘    │
+│  ┌────────────────┐  ┌────────────────┐                        │
+│  │    Qdrant      │  │    Ollama      │                        │
+│  │    Server      │  │    Embedding   │                        │
+│  │    :6333       │  │  nomic-embed   │                        │
+│  └────────────────┘  └────────────────┘                        │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -401,7 +401,7 @@ def fetch_collection_info(self, collection_name: str) -> Dict[str, Any]
     "indexed_vectors": 1000,
     "status": "green",
     "config": {
-        "vector_size": 3072,
+        "vector_size": 768,
         "distance": "Cosine"
     }
 }
@@ -412,7 +412,7 @@ def fetch_collection_info(self, collection_name: str) -> Dict[str, Any]
 fetcher = QdrantDataFetcher(client)
 info = fetcher.fetch_collection_info("wikipedia_ja")
 print(f"ベクトル次元: {info['config']['vector_size']}")
-# ベクトル次元: 3072
+# ベクトル次元: 768
 ```
 
 #### メソッド: `fetch_collection_source_info`
@@ -580,14 +580,17 @@ def get_collection_embedding_params(
 | 次元数 | 推定モデル | プロバイダー |
 |--------|-----------|-------------|
 | 1536 | text-embedding-3-small | OpenAI |
-| 3072 | gemini-embedding-001 | Gemini |
-| 768 | gemini-embedding-001 | Gemini |
+| 3072 | text-embedding-3-large | OpenAI |
+| 768 | nomic-embed-text | Ollama |
+
+> デフォルトのフォールバックは `{"model": "nomic-embed-text", "dims": 768, "provider": "ollama"}`。
 
 **戻り値例**:
 ```python
 {
-    "model": "gemini-embedding-001",
-    "dims": 3072
+    "model": "nomic-embed-text",
+    "dims": 768,
+    "provider": "ollama"
 }
 ```
 
@@ -595,7 +598,7 @@ def get_collection_embedding_params(
 # 使用例
 params = get_collection_embedding_params(client, "wikipedia_ja")
 print(f"モデル: {params['model']}, 次元数: {params['dims']}")
-# モデル: gemini-embedding-001, 次元数: 3072
+# モデル: nomic-embed-text, 次元数: 768
 ```
 
 ---
@@ -629,7 +632,7 @@ def get_collection_stats(
 {
     "total_points": 1000,
     "vector_config": {
-        "default": {"size": 3072, "distance": "Cosine"}
+        "default": {"size": 768, "distance": "Cosine"}
     },
     "status": "green"
 }
@@ -840,7 +843,7 @@ print(f"サンプル: {texts[0][:50]}...")
 ```python
 def embed_texts_for_qdrant(
     texts: List[str],
-    model: str = "gemini-embedding-001",
+    model: str = "nomic-embed-text",
     batch_size: int = 100
 ) -> List[List[float]]
 ```
@@ -848,24 +851,24 @@ def embed_texts_for_qdrant(
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
 | `texts` | List[str] | - | テキストのリスト |
-| `model` | str | "gemini-embedding-001" | 使用する埋め込みモデル |
+| `model` | str | "nomic-embed-text" | 使用する埋め込みモデル |
 | `batch_size` | int | 100 | バッチサイズ |
 
 | 項目 | 内容 |
 |------|------|
-| **Input** | `texts: List[str]`, `model: str = "gemini-embedding-001"`, `batch_size: int = 100` |
-| **Process** | 1. 空文字列を除外してインデックス記録<br>2. Gemini APIでバッチ処理<br>3. 空文字列位置にダミーベクトル挿入 |
-| **Output** | `List[List[float]]`: 3072次元ベクトルのリスト |
+| **Input** | `texts: List[str]`, `model: str = "nomic-embed-text"`, `batch_size: int = 100` |
+| **Process** | 1. 空文字列を除外してインデックス記録<br>2. Ollama Embedding でバッチ処理（`create_embedding_client(provider="ollama")`）<br>3. 空文字列位置は None を返す（ダミーベクトルは挿入しない） |
+| **Output** | `List[List[float]]`: 768次元ベクトルのリスト（空文字列位置は None） |
 
 **特徴**:
-- 空文字列・空白のみのテキストは自動的にダミーベクトル（ゼロベクトル）に置換
-- Gemini Embedding APIを使用（3072次元）
+- 空文字列・空白のみのテキストは `None` を返す（ダミーベクトルは挿入しない）
+- Ollama Embedding を使用（nomic-embed-text / 768次元、ローカル実行・APIキー不要・コストなし）
 
 **戻り値例**:
 ```python
 [
-    [0.0123, -0.0456, 0.0789, ...],  # 3072次元
-    [0.0234, -0.0567, 0.0891, ...],  # 3072次元
+    [0.0123, -0.0456, 0.0789, ...],  # 768次元
+    [0.0234, -0.0567, 0.0891, ...],  # 768次元
     ...
 ]
 ```
@@ -877,7 +880,7 @@ vectors = embed_texts_for_qdrant(texts)
 print(f"ベクトル数: {len(vectors)}")
 print(f"次元数: {len(vectors[0])}")
 # ベクトル数: 2
-# 次元数: 3072
+# 次元数: 768
 ```
 
 #### `create_or_recreate_collection_for_qdrant`
@@ -889,7 +892,7 @@ def create_or_recreate_collection_for_qdrant(
     client: QdrantClient,
     name: str,
     recreate: bool,
-    vector_size: int = 3072,
+    vector_size: int = 768,
     use_sparse: bool = False
 )
 ```
@@ -898,17 +901,17 @@ def create_or_recreate_collection_for_qdrant(
 |------------|------|-----------|------|
 | `name` | str | - | コレクション名 |
 | `recreate` | bool | - | `True`: 既存を削除して再作成 |
-| `vector_size` | int | 3072 | Dense Vectorの次元数 |
+| `vector_size` | int | 768 | Dense Vectorの次元数 |
 | `use_sparse` | bool | False | Hybrid Search（Sparse Vector）の有効化 |
 
 | 項目 | 内容 |
 |------|------|
-| **Input** | `client: QdrantClient`, `name: str`, `recreate: bool`, `vector_size: int = 3072`, `use_sparse: bool = False` |
+| **Input** | `client: QdrantClient`, `name: str`, `recreate: bool`, `vector_size: int = 768`, `use_sparse: bool = False` |
 | **Process** | 1. Dense Vector設定作成<br>2. Sparse Vector設定作成（use_sparse時）<br>3. recreate=True: 削除→作成<br>4. recreate=False: 存在確認→なければ作成<br>5. domainフィールドにインデックス作成 |
 | **Output** | `None`（副作用: コレクション作成） |
 
 **Hybrid Search有効時のベクトル構成**:
-- `default`: Dense Vector (Gemini/OpenAI)
+- `default`: Dense Vector (Ollama Embedding)
 - `text-sparse`: Sparse Vector (Splade)
 
 ```python
@@ -917,7 +920,7 @@ create_or_recreate_collection_for_qdrant(
     client,
     name="wikipedia_qa",
     recreate=True,
-    vector_size=3072
+    vector_size=768
 )
 
 # 使用例（Hybrid Search対応）
@@ -925,7 +928,7 @@ create_or_recreate_collection_for_qdrant(
     client,
     name="hybrid_collection",
     recreate=True,
-    vector_size=3072,
+    vector_size=768,
     use_sparse=True
 )
 ```
@@ -1033,7 +1036,7 @@ print(f"{count}件のポイントを登録しました")
 ```python
 def embed_query_for_search(
     query: str,
-    model: str = "gemini-embedding-001",
+    model: str = "nomic-embed-text",
     dims: Optional[int] = None
 ) -> List[float]
 ```
@@ -1041,38 +1044,42 @@ def embed_query_for_search(
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
 | `query` | str | - | 検索クエリ文字列 |
-| `model` | str | "gemini-embedding-001" | 埋め込みモデル |
+| `model` | str | "nomic-embed-text" | 埋め込みモデル |
 | `dims` | Optional[int] | None | 次元数（プロバイダー判定に使用） |
 
 | 項目 | 内容 |
 |------|------|
-| **Input** | `query: str`, `model: str = "gemini-embedding-001"`, `dims: Optional[int] = None` |
-| **Process** | 1. 次元数/モデル名でプロバイダー判定<br>2. Embeddingクライアント作成<br>3. ベクトル生成（Gemini: retrieval_query） |
+| **Input** | `query: str`, `model: str = "nomic-embed-text"`, `dims: Optional[int] = None` |
+| **Process** | 1. 次元数/モデル名でプロバイダー判定（既定は Ollama）<br>2. Embeddingクライアント作成<br>3. ベクトル生成（互換：Gemini 判定時のみ retrieval_query を指定） |
 | **Output** | `List[float]`: クエリベクトル |
+
+既定は Ollama Embedding（nomic-embed-text / 768次元）。異種・レガシーコレクションのために OpenAI / Gemini 判定ブランチをフォールバックとして残している（例: 1536次元コレクションは実際に text-embedding-3-small）。
 
 **プロバイダー自動選択ロジック**:
 
 | 条件 | 選択されるプロバイダー |
 |-----|---------------------|
+| dims == 768 | Ollama |
 | dims == 1536 | OpenAI |
-| dims == 3072 or 768 | Gemini |
+| dims == 3072 | OpenAI |
+| model に "nomic" を含む | Ollama |
 | model に "text-embedding-3" を含む | OpenAI |
 | model に "gemini" を含む | Gemini |
-| デフォルト | Gemini |
+| デフォルト | Ollama |
 
 **戻り値例**:
 ```python
-[0.0123, -0.0456, 0.0789, ...]  # 3072次元ベクトル
+[0.0123, -0.0456, 0.0789, ...]  # 768次元ベクトル
 ```
 
 ```python
 # 使用例
 query_vector = embed_query_for_search(
     "浦沢直樹の代表作は？",
-    dims=3072
+    dims=768
 )
 print(f"次元数: {len(query_vector)}")
-# 次元数: 3072
+# 次元数: 768
 ```
 
 ---
@@ -1128,7 +1135,7 @@ def merge_collections(
     source_collections: List[str],
     target_collection: str,
     recreate: bool = True,
-    vector_size: int = 3072,
+    vector_size: int = 768,
     progress_callback: Optional[callable] = None
 ) -> Dict[str, Any]
 ```
@@ -1139,12 +1146,12 @@ def merge_collections(
 | `source_collections` | List[str] | - | 統合元コレクションのリスト |
 | `target_collection` | str | - | 統合先コレクション名 |
 | `recreate` | bool | True | 統合先を再作成するか |
-| `vector_size` | int | 3072 | ベクトル次元数 |
+| `vector_size` | int | 768 | ベクトル次元数 |
 | `progress_callback` | Optional[callable] | None | 進捗コールバック |
 
 | 項目 | 内容 |
 |------|------|
-| **Input** | `client: QdrantClient`, `source_collections: List[str]`, `target_collection: str`, `recreate: bool = True`, `vector_size: int = 3072`, `progress_callback: Optional[callable]` |
+| **Input** | `client: QdrantClient`, `source_collections: List[str]`, `target_collection: str`, `recreate: bool = True`, `vector_size: int = 768`, `progress_callback: Optional[callable]` |
 | **Process** | 1. 統合先コレクション作成<br>2. 各ソースから全ポイント取得<br>3. IDを再生成（重複回避）<br>4. メタデータ追加（_source_collection等）<br>5. バッチでアップサート |
 | **Output** | `Dict`: `{source_collections, target_collection, points_per_collection, total_points, success, error}` |
 
@@ -1302,7 +1309,7 @@ create_or_recreate_collection_for_qdrant(
     client,
     name="wikipedia_qa",
     recreate=True,
-    vector_size=3072
+    vector_size=768
 )
 
 # 6. ポイント構築・登録
@@ -1330,7 +1337,7 @@ create_or_recreate_collection_for_qdrant(
     client,
     name="hybrid_collection",
     recreate=True,
-    vector_size=3072,
+    vector_size=768,
     use_sparse=True  # Hybrid Search有効
 )
 
@@ -1388,6 +1395,7 @@ __all__ = [
 | 1.1 | 命名規則依存廃止、動的マッピング導入 |
 | 1.2 | Hybrid Search（Sparse Vector）対応 |
 | 1.3 | ドキュメント改修: シグネチャ・戻り値例・使用例を追加 |
+| 1.4 | 2026-06-21 Ollama ネイティブ化：既定 Embedding を nomic-embed-text(768) に整合・実装追従 |
 
 ---
 

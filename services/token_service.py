@@ -3,7 +3,11 @@
 """
 token_service.py - トークン管理サービス
 =======================================
-トークンカウント、コスト推定、テキスト切り詰めの統合モジュール
+トークンカウント、テキスト切り詰めの統合モジュール
+
+本プロジェクトは Ollama（ローカルLLM）ネイティブのため、実行に API コストは
+発生しない（Ollama 系モデルの価格は 0 として扱う）。価格テーブル／コスト推定 API は
+外部プロバイダーを併用する場合の参考・後方互換のために残している。
 
 統合元:
 - helper_api.py::TokenManager
@@ -26,23 +30,31 @@ logger = logging.getLogger(__name__)
 DEFAULT_ENCODING = "cl100k_base"
 
 # モデル別エンコーディング対応表
+# ※ tiktoken は OpenAI 系トークナイザ。Ollama 系モデルでは近似値として用いる。
 MODEL_ENCODINGS = {
-    # OpenAI GPT-4o系
+    # Ollama系（ローカルLLM・cl100k_base で近似）
+    "gemma4:e4b": "cl100k_base",
+    "llama3.2": "cl100k_base",
+    "llama3.2:3b": "cl100k_base",
+    "qwen2.5:7b": "cl100k_base",
+    "mistral": "cl100k_base",
+    "gemma2": "cl100k_base",
+    # （参考）OpenAI GPT-4o系
     "gpt-4o": "cl100k_base",
     "gpt-4o-mini": "cl100k_base",
     "gpt-4o-audio-preview": "cl100k_base",
     "gpt-4o-mini-audio-preview": "cl100k_base",
-    # OpenAI GPT-4.1系
+    # （参考）OpenAI GPT-4.1系
     "gpt-4.1": "cl100k_base",
     "gpt-4.1-mini": "cl100k_base",
-    # OpenAI O系
+    # （参考）OpenAI O系
     "o1": "cl100k_base",
     "o1-mini": "cl100k_base",
     "o3": "cl100k_base",
     "o3-mini": "cl100k_base",
     "o4": "cl100k_base",
     "o4-mini": "cl100k_base",
-    # Gemini系 (tiktokenでは近似)
+    # （参考）Gemini系 (tiktokenでは近似)
     "gemini-2.0-flash": "cl100k_base",
     "gemini-2.0-pro": "cl100k_base",
     "gemini-1.5-pro-latest": "cl100k_base",
@@ -50,7 +62,15 @@ MODEL_ENCODINGS = {
 }
 
 # LLMモデル価格 ($/1000トークン)
+# Ollama 系はローカル実行のためコスト 0。以降は外部プロバイダー併用時の参考値。
 LLM_PRICING = {
+    # Ollama系（ローカル実行・コストなし）
+    "gemma4:e4b": {"input": 0.0, "output": 0.0},
+    "llama3.2": {"input": 0.0, "output": 0.0},
+    "qwen2.5:7b": {"input": 0.0, "output": 0.0},
+    "mistral": {"input": 0.0, "output": 0.0},
+    "gemma2": {"input": 0.0, "output": 0.0},
+    # （参考）外部プロバイダー
     "gemini-2.0-flash": {"input": 0.0001, "output": 0.0002},
     "gemini-2.0-pro": {"input": 0.002, "output": 0.004},
     "gemini-1.5-pro-latest": {"input": 0.0035, "output": 0.0105},
@@ -60,7 +80,10 @@ LLM_PRICING = {
 }
 
 # Embeddingモデル価格 ($/1000トークン)
+# Ollama Embedding（nomic-embed-text）はローカル実行のためコスト 0。
 EMBEDDING_PRICING = {
+    "nomic-embed-text": 0.0,
+    # （参考）外部プロバイダー
     "gemini-embedding-001": 0.0001,
     "text-embedding-3-small": 0.00002,
     "text-embedding-3-large": 0.00013,
@@ -68,6 +91,12 @@ EMBEDDING_PRICING = {
 
 # モデル制限
 MODEL_LIMITS = {
+    # Ollama系（ローカルLLM）
+    "gemma4:e4b": {"max_tokens": 8192, "max_output": 8192},
+    "llama3.2": {"max_tokens": 131072, "max_output": 8192},
+    "qwen2.5:7b": {"max_tokens": 32768, "max_output": 8192},
+    "gemma2": {"max_tokens": 8192, "max_output": 8192},
+    # （参考）外部プロバイダー
     "gpt-4o": {"max_tokens": 128000, "max_output": 4096},
     "gpt-4o-mini": {"max_tokens": 128000, "max_output": 4096},
     "gpt-4.1": {"max_tokens": 128000, "max_output": 4096},

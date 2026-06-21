@@ -25,8 +25,8 @@ class TestConfigManager:
             cm = ConfigManager()
             # Should have defaults
             assert cm.get("api.timeout") == 30
-            # services/config_service.py（ConfigManager）の既定モデル
-            assert cm.get("models.default") == "gpt-4o-mini"
+            # services/config_service.py（ConfigManager）の既定モデル（Ollama）
+            assert cm.get("models.default") == "gemma4:e4b"
 
     def test_load_yaml(self):
         yaml_content = """
