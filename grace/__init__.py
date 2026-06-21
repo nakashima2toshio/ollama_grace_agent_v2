@@ -5,7 +5,7 @@ GRACE - Guided Reasoning with Adaptive Confidence Execution
 Main Components:
 - schemas: Pydantic models for ExecutionPlan, PlanStep, StepResult
 - config: Configuration loader with YAML and environment variable support
-- planner: Plan generation using Anthropic API
+- planner: Plan generation using Ollama (ローカルLLM)
 - executor: Plan execution with state management
 - tools: Tool definitions (RAG search, reasoning, ask_user, etc.)
 - confidence: Confidence score calculation (Phase 2)

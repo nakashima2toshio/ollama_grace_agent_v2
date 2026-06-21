@@ -30,7 +30,7 @@ from .intervention import (
     InterventionResponse,
     create_intervention_handler,
 )
-from .llm_compat import create_chat_client  # S3: ReAct の Reason 用 genai 互換クライアント
+from .llm_compat import create_chat_client  # ReAct の Reason 用 genai 互換 Ollama クライアント
 from .replan import ReplanOrchestrator, create_replan_orchestrator  # [FIX]: 冒頭へ移動
 from .schemas import (
     AgentThought,  # S3: ReAct の Reason 出力
@@ -60,7 +60,7 @@ except ImportError:
         raise ImportError("services.agent_service is not available")
 # ================================
 
-# [MIGRATION] create_llm_client を追加（_evaluate_rag_relevance で使用）
+# Ollama クライアント（_evaluate_rag_relevance で使用）
 try:
     from helper.helper_llm import create_llm_client
     _LLM_CLIENT_AVAILABLE = True
@@ -1274,7 +1274,6 @@ class Executor:
         )
 
         try:
-            # [MIGRATION openai→ollama] create_llm_client("openai") → create_llm_client("ollama")
             import time as _time
 
             if not _LLM_CLIENT_AVAILABLE:

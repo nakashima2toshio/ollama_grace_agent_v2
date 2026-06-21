@@ -12,14 +12,13 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
-from helper.helper_embedding import create_embedding_client  # [FIXED] helper_embedding → helper.helper_embedding
+from helper.helper_embedding import create_embedding_client
 
-# [MIGRATION] from google import genai / from google.genai import types を削除
-# AnthropicClient は helper_llm 経由、Embedding は helper_embedding 経由で使用
-from helper.helper_llm import create_llm_client  # [FIXED] helper_llm → helper.helper_llm
+# LLM は Ollama を helper_llm 経由、Embedding は Ollama を helper_embedding 経由で使用
+from helper.helper_llm import create_llm_client
 
 from .config import GraceConfig, get_config
-from .llm_compat import create_chat_client  # S1: genai 互換 Ollama アダプタ（groundedness 検証用）
+from .llm_compat import create_chat_client  # genai 互換 Ollama アダプタ（groundedness 検証用）
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +26,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 # 信頼度要素
 # =============================================================================
-# Gemini Structured Output用スキーマ
+# Ollama 構造化出力（JSON モード）用スキーマ
 class EvaluationResult(BaseModel):  # ← 追加
     """LLM信頼度評価の応答スキーマ"""  # ← 追加
     score: float  # ← 追加
@@ -467,7 +466,6 @@ class LLMSelfEvaluator:
         self.config = config or get_config()
         self.model_name = model_name or self.config.llm.model
 
-        # [MIGRATION openai→ollama] create_llm_client("openai") → create_llm_client("ollama")
         self.llm = create_llm_client("ollama", default_model=self.model_name)
 
         logger.info(f"LLMSelfEvaluator initialized with model: {self.model_name}")
@@ -502,20 +500,18 @@ class LLMSelfEvaluator:
             import time as _time
             t0 = _time.time()
 
-            # [MIGRATION] generate_content() + types.GenerateContentConfig
-            #           → llm.generate_content() (Anthropic版)
-            # 戻り値は str が直接返る。AFC 無効化オプションは不要。
+            # Ollama の generate_content() は str を直接返す
             text = self.llm.generate_content(
                 prompt=prompt,
                 model=self.model_name,
-                max_tokens=512,  # 出力枠が小さいと推論/thinking系モデルで本文が空になる（anthropic基準=512）
+                max_tokens=512,  # 出力枠が小さいと推論/thinking系モデルで本文が空になる（基準=512）
                 temperature=0.0,
             )
 
             elapsed = _time.time() - t0
             logger.info(f"[API時間] LLMSelfEvaluator.evaluate: {elapsed:.1f}秒")
 
-            # [MIGRATION] Noneガード: generate_content() は str を返すため基本不要だが念のため維持
+            # Noneガード: generate_content() は str を返すため基本不要だが念のため維持
             if not text:
                 logger.warning("LLM self-evaluation returned empty response")
                 return 0.5
@@ -525,7 +521,7 @@ class LLMSelfEvaluator:
             # --- [IPO LOG] PROCESS OUTPUT (GRACE SELF-EVAL) ---
             logger.info(f"\n{'=' * 20} [GRACE SELF-EVAL IPO: OUTPUT] {'=' * 20}\n{text}\n{'=' * 60}")
 
-            # [MIGRATION openai→ollama] llama3.2 は "答えは 0.8です。" のように返すため regex で抽出
+            # llama3.2 は "答えは 0.8です。" のように返すため regex で数値を抽出
             import re as _re
             m = _re.search(r"[01]?\.\d+|\b[01]\b", text)
             confidence = float(m.group()) if m else float(text)
@@ -602,17 +598,14 @@ class LLMSelfEvaluator:
         try:
             logger.info(f"LLM evaluate_with_factors prompt len: {len(prompt)}")
 
-            # [MIGRATION] generate_content() + response_schema=EvaluationResult (Gemini 構造化出力)
-            #           → generate_structured() で Tool Use に自動変換 (Anthropic)
-            # 戻り値は EvaluationResult インスタンスが直接返る。
-            # ・response.parsed / response.text の手動パース不要
-            # ・Markdownコードブロック除去、JSONDecodeError ハンドリング不要
-            # ・AFC 無効化オプション不要（Anthropic には AFC が存在しない）
+            # generate_structured() は Ollama の JSON モードで構造化出力を行う。
+            # 戻り値は EvaluationResult インスタンスが直接返る
+            # （手動の JSON パースや Markdown コードブロック除去は不要）。
             result: EvaluationResult = self.llm.generate_structured(
                 prompt=prompt,
                 response_schema=EvaluationResult,
                 model=self.model_name,
-                max_tokens=1024,  # 構造化出力に十分な枠を確保（anthropic基準=1024）
+                max_tokens=1024,  # 構造化出力に十分な枠を確保（基準=1024）
                 temperature=0.0,
                 system="You are an AI agent monitor. Evaluate the step result and return structured JSON.",
             )
@@ -709,8 +702,7 @@ class SourceAgreementCalculator:
         """
         self.config = config or get_config()
 
-        # [MIGRATION openai→ollama] create_embedding_client("openai") → create_embedding_client("ollama")
-        # nomic-embed-text: 768次元（Qdrant コレクション再作成が必要）
+        # Ollama Embedding（nomic-embed-text: 768次元）
         self.embedding_client = create_embedding_client("ollama")
 
         logger.info("SourceAgreementCalculator initialized")
@@ -728,9 +720,7 @@ class SourceAgreementCalculator:
             return 1.0  # 単一ソースは完全一致とみなす
 
         try:
-            # 各回答のEmbeddingを取得
-            # [MIGRATION] self.client.models.embed_content() (Gemini)
-            #           → self.embedding_client.embed_text() (OpenAI)
+            # 各回答のEmbeddingを取得（Ollama Embedding）
             embeddings = []
             for answer in answers:
                 vector = self.embedding_client.embed_text(answer)
@@ -801,7 +791,6 @@ class QueryCoverageCalculator:
         self.config = config or get_config()
         self.model_name = model_name or self.config.llm.model
 
-        # [MIGRATION openai→ollama] create_llm_client("openai") → create_llm_client("ollama")
         self.llm = create_llm_client("ollama", default_model=self.model_name)
 
         logger.info("QueryCoverageCalculator initialized")
@@ -823,26 +812,24 @@ class QueryCoverageCalculator:
             import time as _time
             t0 = _time.time()
 
-            # [MIGRATION] generate_content() + types.GenerateContentConfig
-            #           → llm.generate_content() (Anthropic版)
-            # 戻り値は str が直接返る。AFC 無効化オプションは不要。
+            # Ollama の generate_content() は str を直接返す
             text = self.llm.generate_content(
                 prompt=prompt,
                 model=self.model_name,
-                max_tokens=512,  # 出力枠が小さいと推論/thinking系モデルで本文が空になる（anthropic基準=512）
+                max_tokens=512,  # 出力枠が小さいと推論/thinking系モデルで本文が空になる（基準=512）
                 temperature=0.0,
             )
 
             elapsed = _time.time() - t0
             logger.info(f"[API時間] QueryCoverageCalculator: {elapsed:.1f}秒")
 
-            # [MIGRATION] Noneガード: generate_content() は str を返すため基本不要だが念のため維持
+            # Noneガード: generate_content() は str を返すため基本不要だが念のため維持
             if not text:
                 logger.warning("QueryCoverageCalculator: empty response")
                 return 0.5
 
             text = text.strip()
-            # [MIGRATION openai→ollama] llama3.2 は "答えは 0.6 です。" のように返すため regex で抽出
+            # llama3.2 は "答えは 0.6 です。" のように返すため regex で数値を抽出
             import re as _re
             m = _re.search(r"[01]?\.\d+|\b[01]\b", text)
             coverage = float(m.group()) if m else float(text)
