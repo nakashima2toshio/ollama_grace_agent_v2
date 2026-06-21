@@ -1,9 +1,9 @@
 ## agent_rag.py - Streamlit メインアプリケーション ドキュメント
 
-**Version 4.0** | 最終更新: 2026-05-21
+**Version 4.0** | 最終更新: 2026-06-21
 
-> **v4.0 変更点**: LLM バックエンドを Gemini/OpenAI から **Ollama（ローカル LLM）** に移行。  
-> ページタイトルを "Agent RAG(Gemini)" → **"Agent RAG(Ollama)"** に更新。  
+> **v4.0 変更点**: LLM バックエンドをクラウド LLM から **Ollama（ローカル LLM）** に移行。  
+> ページタイトルを **"Agent RAG(Ollama)"** に更新。  
 > モデル選択セレクトボックスが `GeminiConfig.AVAILABLE_MODELS`（= Ollama モデル一覧）を参照するよう変更済み。
 
 ---
@@ -126,10 +126,10 @@ UI のセレクトボックスには以下が表示されます。
 
 | モデル名 | サイズ目安 | tool_calls | 特徴 | 推奨用途 |
 |---------|----------|:----------:|------|---------|
-| **`llama3.2`** | 約 2 GB | ✅ | テキスト生成・Q/A 生成 | 通常の RAG・エージェント |
+| **`gemma4:e4b`** | 約 3.3 GB | ✅ | ⭐ **デフォルト**。Gemma 4・4B・128k context | 日本語 RAG・エージェント |
+| `llama3.2` | 約 2 GB | ✅ | 代替モデル。テキスト生成・Q/A 生成 | 通常の RAG・エージェント |
 | `llama3.2:3b` | 約 2 GB | ✅ | 軽量版 3B パラメータ | 高速処理・低スペックマシン |
 | `llama3.1` | 約 4.7 GB | ✅ | 大容量・高精度 | 複雑なタスク |
-| `gemma4:e4b` | 約 3.3 GB | ✅ | ⭐ **デフォルト**。Google Gemma 4・4B・128k context | 日本語 RAG・エージェント |
 | `qwen2.5:7b` | 約 4.4 GB | ✅ | 多言語対応（中国語・日本語） | 多言語 RAG |
 | `mistral` | 約 4.1 GB | ✅ | 汎用・高速 | 汎用エージェント |
 | `phi3` | 約 2.2 GB | ❌ | Microsoft 製・軽量 | 軽量テキスト生成 |
@@ -137,8 +137,8 @@ UI のセレクトボックスには以下が表示されます。
 
 > **モデルの事前ダウンロード** が必要です:
 > ```bash
-> ollama pull llama3.2
-> ollama pull gemma4:e4b          # Gemma 4 4B
+> ollama pull gemma4:e4b         # ⭐ デフォルト（Gemma 4 4B）
+> ollama pull llama3.2           # 代替モデル
 > ollama pull nomic-embed-text   # Embedding 用
 > ```
 
@@ -201,9 +201,9 @@ flowchart TB
     end
 
     subgraph EXTERNAL["外部サービス（ローカル）"]
-        OLLAMA["Ollama LLM サーバー\n:11434\nllama3.2（デフォルト）"]
-        QDRANT["Qdrant Vector DB\n:6333\n（Docker）"]
-        REDIS["Redis\n:6379\nCelery ブローカー"]
+        OLLAMA["Ollama LLM サーバー :11434 gemma4:e4b（デフォルト）"]
+        QDRANT["Qdrant Vector DB :6333 （Docker）"]
+        REDIS["Redis :6379 Celery ブローカー"]
         FS["ローカルファイルシステム"]
     end
 
@@ -216,6 +216,14 @@ flowchart TB
     PAGES --> QDRANT
     PAGES --> REDIS
     INLINE --> FS
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class USER,MAIN,SIDEBAR,ROUTER,P1,P2,P3,P4,P5,P6,P7,OLLAMA,QDRANT,REDIS,FS default
+style BROWSER fill:#1a1a1a,stroke:#fff,color:#fff
+style STREAMLIT fill:#1a1a1a,stroke:#fff,color:#fff
+style PAGES fill:#1a1a1a,stroke:#fff,color:#fff
+style INLINE fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 1.2 データフロー
@@ -263,6 +271,14 @@ flowchart TB
     MAIN --> INLINE_PAGES
     CONST --> RAG_PAGE
     RAG_PAGE --> LOAD_MD
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class DOCS,MAIN,RAG_PAGE,CRUD_PAGE,LOAD_MD,EXPLAIN,SEARCH,AGENT,GRACE,LOG default
+style CONST fill:#1a1a1a,stroke:#fff,color:#fff
+style MAIN_FUNC fill:#1a1a1a,stroke:#fff,color:#fff
+style INLINE_PAGES fill:#1a1a1a,stroke:#fff,color:#fff
+style HELPER fill:#1a1a1a,stroke:#fff,color:#fff
+style IMPORTED_PAGES fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 2.2 外部依存関係
@@ -340,7 +356,7 @@ def main() -> None
 | 項目 | 内容 |
 |------|------|
 | **Input** | なし（Streamlitセッション状態から取得） |
-| **Process** | 1. `st.set_page_config` でページ設定（タイトル: "Agent RAG(Anthropic)", アイコン: 🤖, レイアウト: wide）<br>2. `st.sidebar` 内にタイトル・メニューを描画<br>3. `st.radio` で7つのページ選択肢を表示（`format_func` でラベル変換）<br>4. `page_mapping` 辞書から選択されたページの関数を取得<br>5. 対応する関数を呼び出してメインエリアに描画 |
+| **Process** | 1. `st.set_page_config` でページ設定（タイトル: "Agent RAG(Ollama)", アイコン: 🤖, レイアウト: wide）<br>2. `st.sidebar` 内にタイトル・メニューを描画<br>3. `st.radio` で7つのページ選択肢を表示（`format_func` でラベル変換）<br>4. `page_mapping` 辞書から選択されたページの関数を取得<br>5. 対応する関数を呼び出してメインエリアに描画 |
 | **Output** | なし（画面描画のみ） |
 
 **ページルーティング定義**:
@@ -348,7 +364,7 @@ def main() -> None
 | キー | 表示ラベル | 対応関数 | LLM |
 |------|-----------|---------|-----|
 | `explanation` | 📖 説明 | `show_system_explanation_page` | - |
-| `qdrant_search` | 🔎 Qdrant検索 | `show_qdrant_search_page` | Ollama（llama3.2） |
+| `qdrant_search` | 🔎 Qdrant検索 | `show_qdrant_search_page` | Ollama（gemma4:e4b） |
 | `agent_chat` | 🤖 Agent(ReAct+Reflection) | `show_agent_chat_page` | Ollama（選択可） |
 | `grace_chat` | [最新] 自律型Agent(Plan+Executor) | `show_grace_chat_page` | Ollama（選択可） |
 | `log_viewer` | 📊 未回答ログ | `show_log_viewer_page` | - |
@@ -468,16 +484,16 @@ RAG_DATA_DOCS = [
 ```python
 class GeminiConfig:                          # 名前は旧来の名残。実態は Ollama 設定
     AVAILABLE_MODELS = [
-        "llama3.2",       # ⭐ デフォルト
+        "gemma4:e4b",     # ⭐ デフォルト（Gemma 4 4B / tool calling 対応）
+        "llama3.2",       # 代替モデル
         "llama3.2:3b",
         "llama3.1",
-        "gemma4:e4b",     # Google Gemma 4 4B（tool calling 対応）
         "qwen2.5:7b",
         "mistral",
         "phi3",           # tool calling 非対応
         "gemma2",         # tool calling 非対応
     ]
-    DEFAULT_MODEL = "llama3.2"
+    DEFAULT_MODEL = "gemma4:e4b"
     EMBEDDING_MODEL = "nomic-embed-text"     # Ollama Embedding
 
 class LLMProviderConfig:
@@ -507,7 +523,7 @@ streamlit run agent_rag.py --server.port 8501
 # 1. Ollama サーバーが起動しているか
 curl http://localhost:11434/api/tags
 
-# 2. llama3.2 がダウンロード済みか
+# 2. gemma4:e4b がダウンロード済みか
 ollama list
 
 # 3. Docker（Qdrant + Redis）が起動しているか
@@ -560,7 +576,8 @@ uv run streamlit run agent_rag.py --server.port 8501
 | 1.0 | 初版作成。基本的なページルーティング（Gemini バックエンド） |
 | 2.0 | GRACE自律型エージェントページ追加。ログビューアページ追加 |
 | 3.0 | RAGデータ作成ページ追加。Qdrant CRUDページ追加（仮実装）。メニュー構成を7ページに拡張 |
-| **4.0** | **LLM バックエンドを Ollama（ローカル）に移行**。`GeminiConfig.AVAILABLE_MODELS` を Ollama モデル一覧に変更。`LLMProviderConfig.DEFAULT_LLM_PROVIDER` を `"ollama"` に変更。ページタイトルを "Agent RAG(Anthropic)" に更新。llama3.2 固有バグへの対策実装（`_resolve_schema_refs`, JSON モード, regex float 抽出）。 |
+| **4.0** | **LLM バックエンドを Ollama（ローカル）に移行**。`GeminiConfig.AVAILABLE_MODELS` を Ollama モデル一覧に変更。`LLMProviderConfig.DEFAULT_LLM_PROVIDER` を `"ollama"` に変更。ページタイトルを "Agent RAG(Ollama)" に更新。ローカル LLM 固有バグへの対策実装（`_resolve_schema_refs`, JSON モード, regex float 抽出）。 |
+| **4.1** (2026-06-21) | Ollama ネイティブ化の表記統一・Mermaid §7 スタイル整備。デフォルトモデルを `gemma4:e4b` に統一（代替 `llama3.2`）。 |
 
 ---
 
@@ -583,20 +600,20 @@ flowchart LR
     end
 
     subgraph CONFIG["config.py"]
-        GEMINI_CFG["GeminiConfig\n(= Ollama モデル設定)"]
-        LLM_CFG["LLMProviderConfig\n(DEFAULT='ollama')"]
+        GEMINI_CFG["GeminiConfig (= Ollama モデル設定)"]
+        LLM_CFG["LLMProviderConfig (DEFAULT='ollama')"]
         AGENT_CFG["AgentConfig"]
     end
 
     subgraph HELPER["helper/"]
-        LLM["helper_llm.py\nOllamaClient"]
-        EMB["helper_embedding.py\nOllamaEmbedding"]
+        LLM["helper_llm.py OllamaClient"]
+        EMB["helper_embedding.py OllamaEmbedding"]
     end
 
     subgraph INFRA["インフラ（ローカル）"]
-        OLLAMA_SRV["Ollama :11434\nllama3.2"]
-        QDRANT_SRV["Qdrant :6333\n(Docker)"]
-        REDIS_SRV["Redis :6379\n(Docker)"]
+        OLLAMA_SRV["Ollama :11434 gemma4:e4b"]
+        QDRANT_SRV["Qdrant :6333 (Docker)"]
+        REDIS_SRV["Redis :6379 (Docker)"]
     end
 
     subgraph STDLIB["標準ライブラリ"]
@@ -615,4 +632,13 @@ flowchart LR
     HELPER --> OLLAMA_SRV
     UI_PAGES --> QDRANT_SRV
     UI_PAGES --> REDIS_SRV
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class AGENT_RAG,ST,EXPLAIN,SEARCH,GRACE,AGENT_CHAT,LOG_VIEW,GEMINI_CFG,LLM_CFG,AGENT_CFG,LLM,EMB,OLLAMA_SRV,QDRANT_SRV,REDIS_SRV,PATHLIB default
+style STREAMLIT_LIB fill:#1a1a1a,stroke:#fff,color:#fff
+style UI_PAGES fill:#1a1a1a,stroke:#fff,color:#fff
+style CONFIG fill:#1a1a1a,stroke:#fff,color:#fff
+style HELPER fill:#1a1a1a,stroke:#fff,color:#fff
+style INFRA fill:#1a1a1a,stroke:#fff,color:#fff
+style STDLIB fill:#1a1a1a,stroke:#fff,color:#fff
 ```

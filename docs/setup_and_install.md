@@ -63,6 +63,12 @@ flowchart TB
     STREAMLIT --> REDIS
     REDIS --> CELERY
     CELERY --> OLLAMA
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class USER,STREAMLIT,OLLAMA,QDRANT,REDIS,CELERY default
+style APP fill:#1a1a1a,stroke:#fff,color:#fff
+style LOCAL fill:#1a1a1a,stroke:#fff,color:#fff
+style BG fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### コンポーネント概要
@@ -339,8 +345,7 @@ uv run python -c "import streamlit, qdrant_client, openai; print('OK')"
 
 | パッケージ | バージョン | 用途 |
 |----------|----------|------|
-| openai | 1.100.2 | Ollama OpenAI 互換クライアント |
-| anthropic | >=0.40.0 | Claude API（オプション） |
+| openai | 1.100.2 | Ollama OpenAI 互換クライアント（APIキー不要・ローカル接続） |
 | streamlit | 1.48.1 | Web UI |
 | qdrant-client | 1.15.1 | ベクトル DB クライアント |
 | celery | 5.5.3 | タスクキュー |
@@ -380,13 +385,11 @@ touch .env
 # CELERY_RESULT_BACKEND=redis://localhost:6379/0
 
 # ============================================================
-# 外部 API（オプション）
+# 外部 API（オプション・LLM/Embedding には不要）
 # ============================================================
-# OpenAI Embedding を使用する場合
-# OPENAI_API_KEY=sk-...
-
-# Anthropic Claude を使用する場合
-# ANTHROPIC_API_KEY=sk-ant-...
+# Web 検索を使う場合のみ（LLM用途ではない）
+# GOOGLE_CSE_API_KEY=...
+# GOOGLE_CSE_ID=...
 
 # Cohere Rerank を使用する場合
 # COHERE_API_KEY=...
@@ -395,7 +398,8 @@ touch .env
 # PG_CONN_STR=postgresql://user:password@localhost:5432/dbname
 ```
 
-> **Ollama をローカルで使う通常運用では、`.env` への設定は不要です。**
+> **LLM・Embedding はすべて Ollama（ローカル実行）で動作し、API キーは不要です。**
+> Ollama をローカルで使う通常運用では、`.env` への設定は不要です。
 
 ---
 
@@ -783,4 +787,13 @@ ollama_grace_agent/
 
 ---
 
-*最終更新: 2026-05-21*
+## 13. 変更履歴
+
+| 日付 | 内容 |
+|------|------|
+| 2026-05-21 | 初版作成 |
+| 2026-06-21 | Ollama ネイティブ化の表記統一（API キー記述の削除・依存表の整理） |
+
+---
+
+*最終更新: 2026-06-21*

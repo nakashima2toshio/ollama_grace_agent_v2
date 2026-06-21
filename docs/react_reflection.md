@@ -1,6 +1,6 @@
 # agent_service.py - Agent(ReAct+Reflection) ドキュメント
 
-**Version 1.0** | 最終更新: 2026-06-09
+**Version 1.0** | 最終更新: 2026-06-21
 
 ---
 
@@ -149,6 +149,7 @@ flowchart TB
     F --> G
 
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class A,B,C,D,E,F,G,H,H1,H2,H3,I,J,K,L,M,N,O,P default
 style UI fill:#1a1a1a,stroke:#fff,color:#fff
 style Agent fill:#1a1a1a,stroke:#fff,color:#fff
@@ -466,7 +467,7 @@ def generate_with_tools(
 | パラメータ | 型 | デフォルト | 説明 |
 |---|---|---|---|
 | `messages` | `List[Dict[str, Any]]` | - | 会話履歴（OpenAI 形式） |
-| `tools` | `List[Dict[str, Any]]` | - | ツール定義リスト（Anthropic input_schema 形式） |
+| `tools` | `List[Dict[str, Any]]` | - | ツール定義リスト（`input_schema` 形式 / Ollama の OpenAI 互換 tool_calls に変換） |
 | `system` | `str` | `""` | システムプロンプト |
 | `model` | `Optional[str]` | `None` | モデル名（None 時は default_model） |
 | `max_tokens` | `int` | `4096` | 最大出力トークン数 |
@@ -474,7 +475,7 @@ def generate_with_tools(
 | 項目 | 内容 |
 |------|------|
 | **Input** | `messages`, `tools`, `system`, `model`, `max_tokens` |
-| **Process** | 1. `GeminiConfig.supports_tool_calls(model)` でツール対応確認<br>2. Anthropic 形式ツールを OpenAI 形式に変換して API 呼び出し<br>3. `msg.tool_calls` あり → 構造化ツール呼び出し（Stage 1）<br>4. `msg.content` にツール構文あり → `_parse_text_tool_calls()` でパース（Stage 2）<br>5. `msg.content=None` → tools なし再試行（Stage 3）<br>6. それでも空 → 空テキストをそのまま返す（Stage 4） |
+| **Process** | 1. `GeminiConfig.supports_tool_calls(model)` でツール対応確認<br>2. `input_schema` 形式ツールを Ollama の OpenAI 互換形式に変換して API 呼び出し<br>3. `msg.tool_calls` あり → 構造化ツール呼び出し（Stage 1）<br>4. `msg.content` にツール構文あり → `_parse_text_tool_calls()` でパース（Stage 2）<br>5. `msg.content=None` → tools なし再試行（Stage 3）<br>6. それでも空 → 空テキストをそのまま返す（Stage 4） |
 | **Output** | `Tuple[str, List[Dict], str]`: `(text, tool_calls_result, finish_reason)` |
 
 **戻り値例**:
@@ -906,3 +907,4 @@ agent_rag.py
 | 1.0 | 初版作成（アーキテクチャ・シーケンス図・フェーズ説明・キャッシュ戦略・コールチェーン） |
 | 1.1 | Mermaid 図に `%%{init}%%` ブロックを追加（黒バック・白文字） |
 | 1.2 | `a_class_method_md_format.md` 準拠にリフォーマット。ファイル責務表を先頭に移動。クラス・関数 IPO詳細セクションを追加 |
+| 1.3 | Ollama ネイティブ化の表記統一・Mermaid §7 スタイル整備（2026-06-21） |
