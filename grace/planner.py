@@ -1,24 +1,11 @@
 """
 GRACE Planner - 計画生成エージェント
 
-ユーザーの質問を分析し、実行計画を生成
+ユーザーの質問を分析し、実行計画を生成する。
 
-[2026-05-19] ollama_grace_agent 移植対応:
-    - OpenAIClient → OllamaClient (via create_llm_client)
-    - create_llm_client("openai") → create_llm_client("ollama")
-    - max_completion_tokens → max_tokens (Ollama は max_completion_tokens 非対応)
-    - generate_structured() は JSON モード + Pydantic parse で代替
-
-[2026-05-05] openai_grace_agent 移植対応:
-    - AnthropicClient → OpenAIClient (via create_llm_client)
-    - create_llm_client("anthropic") → create_llm_client("openai")
-    - response_schema=ExecutionPlan → generate_structured() で Structured Outputs に代替
-    - max_tokens → max_completion_tokens（gpt-5.4-mini以降の仕様変更）
-    - AFC関連バグ回避コードを削除（Anthropic では不要）
-
-[2026-05-20] ollama_grace_agent 移植対応:
-    - create_llm_client("openai") → create_llm_client("ollama")
-    - max_completion_tokens → max_tokens（Ollama は max_completion_tokens 非対応）
+LLM 呼び出しは Ollama（ローカルLLM）を `create_llm_client("ollama")` 経由で利用する。
+構造化出力は Ollama の JSON モード + Pydantic パースで実現し、トークン上限は
+`max_tokens` で指定する。
 """
 
 import logging
@@ -26,7 +13,7 @@ from typing import Optional
 
 from qdrant_client import QdrantClient
 
-# [MIGRATION openai→ollama] OllamaClient を helper_llm 経由で使用
+# OllamaClient を helper_llm 経由で使用
 from helper.helper_llm import create_llm_client
 from regex_mecab import KeywordExtractor
 from services.prompts import SEARCH_QUERY_INSTRUCTION
@@ -140,8 +127,7 @@ class Planner:
         self.config = config or get_config()
         self.model_name = model_name or self.config.llm.model
 
-        # [MIGRATION openai→ollama] create_llm_client("openai") → create_llm_client("ollama")
-        # OllamaClient.generate_structured() が JSON モード+Pydantic parse を隠蔽する
+        # Ollama クライアント。generate_structured() が JSON モード+Pydantic parse を隠蔽する
         self.llm = create_llm_client("ollama", default_model=self.model_name)
 
         try:
@@ -273,12 +259,11 @@ class Planner:
                 t0 = _time.time()
 
                 # OllamaClient.generate_structured() は JSON モード + Pydantic parse で実装
-                # [MIGRATION openai→ollama] max_completion_tokens → max_tokens
                 plan = self.llm.generate_structured(
                     prompt=prompt,
                     response_schema=ExecutionPlan,
                     model=self.model_name,
-                    max_tokens=8192,  # [MIGRATION openai→ollama] max_completion_tokens → max_tokens
+                    max_tokens=8192,  # Ollama はトークン上限を max_tokens で指定
                     system="You are an expert planning agent. Always respond using the provided tool.",
                     temperature=self.config.llm.temperature,
                 )
@@ -428,11 +413,10 @@ class Planner:
 
             t0 = _time.time()
 
-            # [MIGRATION openai→ollama] max_completion_tokens → max_tokens
             complexity_str = self.llm.generate_content(
                 prompt=prompt,
                 model=self.model_name,
-                max_tokens=10,  # [MIGRATION openai→ollama] max_completion_tokens → max_tokens
+                max_tokens=10,  # Ollama はトークン上限を max_tokens で指定
                 temperature=0.1,
             )
 
@@ -478,12 +462,11 @@ class Planner:
             import time as _time
             t0 = _time.time()
 
-            # [MIGRATION openai→ollama] max_completion_tokens → max_tokens
             refined_plan = self.llm.generate_structured(
                 prompt=refine_prompt,
                 response_schema=ExecutionPlan,
                 model=self.model_name,
-                max_tokens=4096,  # [MIGRATION openai→ollama] max_completion_tokens → max_tokens
+                max_tokens=4096,  # Ollama はトークン上限を max_tokens で指定
                 temperature=self.config.llm.temperature,
             )
 

@@ -17,9 +17,8 @@ from typing import Any, Dict, List, Optional
 
 from qdrant_client import QdrantClient
 
-# [MIGRATION] from google import genai / from google.genai import types を削除
-# ReasoningTool の LLM 呼び出しは helper_llm 経由の AnthropicClient に置換
-from helper.helper_llm import create_llm_client  # [FIXED] helper_llm → helper.helper_llm
+# ReasoningTool の LLM 呼び出しは helper_llm 経由の Ollama クライアントを使用
+from helper.helper_llm import create_llm_client
 
 # Import wrappers for robust execution
 from regex_mecab import KeywordExtractor
@@ -320,7 +319,6 @@ class ReasoningTool(BaseTool):
     ):
         self.config = config or get_config()
         self.model_name = model_name or self.config.llm.model
-        # [MIGRATION openai→ollama] create_llm_client("openai") → create_llm_client("ollama")
         self.llm = create_llm_client("ollama", default_model=self.model_name)
 
     def execute(
@@ -353,9 +351,7 @@ class ReasoningTool(BaseTool):
             # --- [IPO LOG] PROCESS INPUT (GRACE REASONING) ---
             logger.info(f"\n{'=' * 20} [GRACE REASONING IPO: INPUT] {'=' * 20}\n{prompt}\n{'=' * 60}")
 
-            # [MIGRATION] client.models.generate_content() + types.GenerateContentConfig
-            #           → llm.generate_content() (Anthropic版)
-            # 戻り値は str が直接返る。AFC 無効化オプションは不要。
+            # Ollama の generate_content() は str を直接返す
             answer = self.llm.generate_content(
                 prompt=prompt,
                 model=self.model_name,
@@ -372,8 +368,7 @@ class ReasoningTool(BaseTool):
 
             execution_time = int((time.time() - start_time) * 1000)
 
-            # [MIGRATION] トークン使用量:
-            # generate_content() は str を返すため usage_metadata は取得不可。
+            # トークン使用量: generate_content() は str を返すため usage_metadata は取得不可。
             # 詳細なトークン追跡が必要な場合は llm.count_tokens() を使用すること。
             token_usage = {}
 
@@ -470,8 +465,7 @@ class AskUserTool(BaseTool):
     name = "ask_user"
     description = "ユーザーに追加情報や確認を求める"
 
-    # [MIGRATION] Gemini Function Calling形式 → Anthropic Tool Use形式に変更
-    # 変更点: "parameters" キー → "input_schema" キー
+    # ツール定義（input_schema 形式）。
     # agent_service.py の generate_with_tools() に渡す際にそのまま使用可能
     FUNCTION_DECLARATION = {
         "name": "ask_user_for_clarification",
@@ -482,7 +476,7 @@ class AskUserTool(BaseTool):
             "必要な情報が検索で見つからない / "
             "矛盾する情報があり優先順位が不明"
         ),
-        # [MIGRATION] "parameters" → "input_schema" (Anthropic Tool Use形式)
+        # 引数スキーマは "input_schema" キーで定義
         "input_schema": {
             "type": "object",
             "properties": {

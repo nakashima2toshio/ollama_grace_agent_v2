@@ -52,9 +52,8 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 class LLMConfig(BaseModel):
-    """LLM設定"""
-    # [MIGRATION openai→ollama] provider: "openai" → "ollama"
-    # [MIGRATION openai→ollama→gemma4] model: "gpt-4o-mini" → "llama3.2" → "gemma4:e4b"
+    """LLM設定（Ollama ローカルLLM）"""
+    # 既定は Ollama のローカルLLM。モデルは gemma4:e4b（代替: llama3.2）
     provider: str = "ollama"
     model: str = "gemma4:e4b"
     temperature: float = 0.7
@@ -63,10 +62,9 @@ class LLMConfig(BaseModel):
 
 
 class EmbeddingConfig(BaseModel):
-    """Embedding設定"""
-    # [MIGRATION openai→ollama] provider: "openai" → "ollama"
-    # [MIGRATION openai→ollama] model: "text-embedding-3-large" → "nomic-embed-text"
-    # [MIGRATION openai→ollama] dimensions: 3072 → 768（Qdrant コレクション再作成必須）
+    """Embedding設定（Ollama ローカル Embedding）"""
+    # 既定は Ollama の nomic-embed-text（768次元）。
+    # ※次元を変更した場合は Qdrant コレクションの再作成が必要。
     provider: str = "ollama"
     model: str = "nomic-embed-text"
     dimensions: int = 768
@@ -217,9 +215,7 @@ class ExecutorConfig(BaseModel):
 
 
 class OllamaConfig(BaseModel):
-    """Ollama 設定（新規追加）
-    [MIGRATION openai→ollama] 2026-05-20
-    """
+    """Ollama 設定（ローカルLLM・OpenAI 互換エンドポイント）"""
     base_url: str = "http://localhost:11434/v1"
     llm_model: str = "gemma4:e4b"
     available_models: list = Field(default_factory=lambda: [
