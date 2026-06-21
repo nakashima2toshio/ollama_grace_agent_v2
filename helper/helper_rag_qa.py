@@ -1,13 +1,8 @@
 """
-LLMクライアント抽象化レイヤー
+Ollama 既定のマルチプロバイダー RAG/QA ヘルパー
 
-OpenAI API / Gemini API / Anthropic API の3プロバイダーに対応する統一インターフェースを提供。
-
-Migration: Gemini → Anthropic (2026-04-20) → OpenAI (2026-04-25)
-  - AnthropicClient クラスを追加
-  - generate_with_tools() を追加（ReAct Agent 用）
-  - create_llm_client() に "anthropic" プロバイダーを追加
-  - LLM_MODELS / LLM_PRICING / LLM_LIMITS に Claude モデルを追加
+Ollama（ローカルLLM・既定）をデフォルトとしつつ、Ollama / OpenAI / Gemini / Anthropic
+の各プロバイダーに対応する統一インターフェースを提供する。
 """
 
 import logging
@@ -69,8 +64,7 @@ LLM_MODELS_GEMINI = [
     "gemini-1.5-flash",
 ]
 
-# --- Anthropic モデル (新規追加) ---
-# [MIGRATION] claude-sonnet-4-6 を追加、旧モデルも後方互換で残存
+# --- Anthropic モデル ---
 LLM_MODELS_ANTHROPIC = [
     "claude-opus-4-7",            # 最新 Opus (2026-04)
     "claude-opus-4-6",            # Opus 前世代
@@ -94,8 +88,7 @@ LLM_MODELS = LLM_MODELS_ANTHROPIC + LLM_MODELS_GEMINI + LLM_MODELS_OPENAI
 #   https://www.anthropic.com/pricing
 # ----------------------------------------------------------------
 LLM_PRICING = {
-    # Anthropic Claude 4.x (新規追加)
-    # [MIGRATION] claude-sonnet-4-6 を追加
+    # Anthropic Claude 4.x
     "claude-opus-4-7"         : {"input": 0.005,   "output": 0.025  },
     "claude-opus-4-6"         : {"input": 0.015,   "output": 0.075  },
     "claude-sonnet-4-6"       : {"input": 0.003,   "output": 0.015  },  # デフォルト推奨
@@ -116,8 +109,7 @@ LLM_PRICING = {
 # ※ max_output は API デフォルト最大値
 # ----------------------------------------------------------------
 LLM_LIMITS = {
-    # Anthropic Claude 4.x (新規追加)
-    # [MIGRATION] claude-sonnet-4-6 を追加（1M トークンコンテキスト対応）
+    # Anthropic Claude 4.x（claude-sonnet-4-6 は 1M トークンコンテキスト対応）
     "claude-opus-4-7"         : {"max_tokens": 200000,  "max_output": 32000},
     "claude-opus-4-6"         : {"max_tokens": 1000000, "max_output": 32000},
     "claude-sonnet-4-6"       : {"max_tokens": 1000000, "max_output": 64000},  # デフォルト推奨
@@ -161,9 +153,8 @@ EMBEDDING_DIMS = {
 #   export LLM_PROVIDER=anthropic  # anthropic_grace_agent
 #   export LLM_PROVIDER=gemini     # gemini_grace_agent (既存)
 # ================================================================
-# [MIGRATION] デフォルトプロバイダーを "gemini" → "anthropic" に変更
-# 環境変数 LLM_PROVIDER で切り替え可能（gemini_grace_agent は LLM_PROVIDER=gemini を設定）
-DEFAULT_LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai")  # [MIGRATION anthropic→openai]
+# 環境変数 LLM_PROVIDER で切り替え可能（既定は Ollama・ローカルLLM）
+DEFAULT_LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")
 
 
 # ================================================================
@@ -212,7 +203,7 @@ class OpenAIClient(LLMClient):
     def generate_content(self, prompt: str, model: Optional[str] = None, **kwargs) -> str:
         model = model or self.default_model
         messages = [{"role": "user", "content": prompt}]
-        # [FIX] gpt-5.4-mini 以降は max_tokens が廃止。max_completion_tokens に自動変換する
+        # gpt-5.4-mini 以降は max_tokens が廃止。max_completion_tokens に自動変換する
         if "max_tokens" in kwargs and "max_completion_tokens" not in kwargs:
             kwargs["max_completion_tokens"] = kwargs.pop("max_tokens")
         response = self.client.chat.completions.create(model=model, messages=messages, **kwargs)
@@ -227,7 +218,7 @@ class OpenAIClient(LLMClient):
     ) -> BaseModel:
         model = model or self.default_model
         messages = [{"role": "user", "content": prompt}]
-        # [FIX] gpt-5.4-mini 以降は max_tokens が廃止。max_completion_tokens に自動変換する
+        # gpt-5.4-mini 以降は max_tokens が廃止。max_completion_tokens に自動変換する
         if "max_tokens" in kwargs and "max_completion_tokens" not in kwargs:
             kwargs["max_completion_tokens"] = kwargs.pop("max_tokens")
         response = self.client.beta.chat.completions.parse(
@@ -257,7 +248,6 @@ class OpenAIClient(LLMClient):
     ) -> tuple:
         """
         Tool Use を含む ReAct ループの 1 ステップを実行する。
-        [MIGRATION anthropic→openai]
 
         Anthropic との差異:
           - ツール定義: "input_schema" → "parameters"
@@ -275,7 +265,7 @@ class OpenAIClient(LLMClient):
 
         model_name = model or self.default_model
 
-        # [MIGRATION] system を messages 先頭に挿入（OpenAI 形式）
+        # system を messages 先頭に挿入（OpenAI 形式）
         # Anthropic では system= パラメータ、OpenAI では messages 内の role="system"
         full_messages: List[Dict[str, Any]] = []
         if system:
@@ -287,7 +277,7 @@ class OpenAIClient(LLMClient):
             "messages": full_messages,
         }
 
-        # [MIGRATION] ツール定義の変換: "input_schema" → "parameters"
+        # ツール定義の変換: "input_schema" → "parameters"
         # tools=[] の場合はツールなし（Reflection フェーズ用）
         if tools:
             openai_tools = [
@@ -309,7 +299,7 @@ class OpenAIClient(LLMClient):
         response = self.client.chat.completions.create(**create_kwargs)
         msg = response.choices[0].message
 
-        # [MIGRATION] ツール呼び出し抽出
+        # ツール呼び出し抽出
         # Anthropic: response.content を走査して b.type=="tool_use"
         # OpenAI:    message.tool_calls リストを走査
         tool_calls_result = []
@@ -327,7 +317,7 @@ class OpenAIClient(LLMClient):
 
         text = msg.content or ""
 
-        # [MIGRATION] finish_reason
+        # finish_reason
         # Anthropic: "tool_use" / "end_turn"
         # OpenAI:    "tool_calls" / "stop" / "length"
         finish_reason = response.choices[0].finish_reason or "stop"
@@ -340,8 +330,7 @@ class OpenAIClient(LLMClient):
         results: List[str],
     ) -> List[Dict[str, Any]]:
         """
-        ツール結果メッセージを構築する。
-        [MIGRATION] Anthropic 形式 → OpenAI 形式
+        ツール結果メッセージを構築する（Anthropic 形式 → OpenAI 形式）。
 
         Anthropic:
             {"role":"user","content":[{"type":"tool_result","tool_use_id":id,"content":...}]}
@@ -431,8 +420,7 @@ class GeminiClient(LLMClient):
 
 
 # ================================================================
-# Anthropic クライアント（新規追加）
-# Migration: Gemini → Anthropic (2026-04-20) → OpenAI (2026-04-25)
+# Anthropic クライアント
 # ================================================================
 
 class AnthropicClient(LLMClient):
@@ -449,7 +437,6 @@ class AnthropicClient(LLMClient):
     def __init__(
         self,
         api_key: Optional[str] = None,
-        # [MIGRATION] デフォルトモデルを claude-sonnet-4-5 → claude-sonnet-4-6 に更新
         default_model: str = "claude-sonnet-4-6",
     ):
         if anthropic_sdk is None:
@@ -539,7 +526,7 @@ class AnthropicClient(LLMClient):
         model_name  = model or self.default_model
         system      = kwargs.pop("system", "You are a helpful assistant. Return structured data as requested.")
         max_tokens  = kwargs.pop("max_tokens", 4096)
-        temperature = kwargs.pop("temperature", None)  # [FIX] temperature を kwargs から取り出す
+        temperature = kwargs.pop("temperature", None)  # temperature を kwargs から取り出す
 
         # Tool Use 定義：Pydantic の JSON Schema を input_schema として渡す
         tool_def = {
@@ -560,7 +547,7 @@ class AnthropicClient(LLMClient):
             "messages"   : [{"role": "user", "content": prompt}],
         }
         if temperature is not None:
-            create_kwargs["temperature"] = temperature  # [FIX] temperature を API に渡す
+            create_kwargs["temperature"] = temperature  # temperature を API に渡す
 
         response = self.client.messages.create(**create_kwargs)
 
@@ -732,31 +719,25 @@ class AnthropicClient(LLMClient):
 # ファクトリ関数
 # ================================================================
 
-# [MIGRATION] デフォルト引数: "gemini" → "anthropic"
-def create_llm_client(provider: str = "openai", **kwargs) -> LLMClient:  # [MIGRATION anthropic→openai→ollama]
+def create_llm_client(provider: str = "ollama", **kwargs) -> LLMClient:
     """
     LLM クライアントのファクトリ関数
 
     Args:
         provider: "ollama" | "anthropic" | "openai" | "gemini"
-                  デフォルト: "openai"（後方互換）
-                  ollama_grace_agent では create_llm_client("ollama") を使用する
+                  デフォルト: "ollama"（ローカルLLM・既定）
         **kwargs: 各クライアントの __init__ に渡すパラメータ
 
     Returns:
         LLMClient インスタンス
 
     Example:
-        # ollama_grace_agent（推奨）
+        # ollama_grace_agent（既定）
         llm = create_llm_client("ollama", default_model="llama3.2")
         text = llm.generate_content("こんにちは")
-
-        # openai_grace_agent（後方互換）
-        llm = create_llm_client("openai", default_model="gpt-4o-mini")
     """
     provider = (provider or DEFAULT_LLM_PROVIDER).lower()
 
-    # [MIGRATION openai→ollama] ollama プロバイダー追加
     if provider == "ollama":
         from helper.helper_llm import OllamaClient
         return OllamaClient(**kwargs)

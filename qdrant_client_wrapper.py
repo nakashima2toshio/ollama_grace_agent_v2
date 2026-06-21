@@ -25,7 +25,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.http import models
 from qdrant_client.http.exceptions import UnexpectedResponse
 
-# Gemini 3 Migration: Embedding抽象化レイヤー
+# Embedding 抽象化レイヤー（既定 Ollama）
 from helper.helper_embedding import (
     DEFAULT_GEMINI_EMBEDDING_DIMS,
     DEFAULT_OPENAI_EMBEDDING_DIMS,
@@ -47,8 +47,8 @@ except ImportError:
         DOCKER_IMAGE = "qdrant/qdrant"
         HEALTH_CHECK_ENDPOINT = "/collections"
         DEFAULT_TIMEOUT = 30
-        DEFAULT_VECTOR_SIZE = 3072
-        DEFAULT_EMBEDDING_MODEL = "gemini-embedding-001"
+        DEFAULT_VECTOR_SIZE = 768
+        DEFAULT_EMBEDDING_MODEL = "nomic-embed-text"
 
 # ログ設定
 logger = logging.getLogger(__name__)
@@ -88,7 +88,7 @@ DEFAULT_VECTOR_SIZE = QdrantConfig.DEFAULT_VECTOR_SIZE
 # =====================================================
 # Ollama Migration: プロバイダー設定
 # =====================================================
-DEFAULT_EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "ollama")  # [MIGRATION] "openai" → "ollama"
+DEFAULT_EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "ollama")  # 既定は Ollama Embedding
 
 # プロバイダー別のデフォルト設定
 PROVIDER_DEFAULTS = {
@@ -110,11 +110,11 @@ PROVIDER_DEFAULTS = {
     },
 }
 
-# コレクション固有の埋め込み設定（レガシー: OpenAI用）
-# [DEPRECATED] Phase 4 STEP 11: 現在の検索は DEFAULT_EMBEDDING_PROVIDER=gemini (3072次元) を使用。
-# これらの OpenAI 1536次元コレクションが Qdrant に残存している場合、次元数不整合で検索失敗する。
-# 旧コレクション (qa_corpus, qa_cc_news_*, qa_livedoor_*) は Qdrant から削除済みか確認すること。
-# 新規登録は COLLECTION_EMBEDDINGS_GEMINI または PROVIDER_DEFAULTS を使用すること。
+# コレクション固有の埋め込み設定（レガシー）
+# [DEPRECATED] 現在の検索は既定で DEFAULT_EMBEDDING_PROVIDER=ollama（nomic-embed-text・768次元）を使用。
+# 旧プロバイダー（OpenAI 1536 / Gemini 3072）次元のコレクションが Qdrant に残存している場合、
+# 次元数不整合で検索失敗するため、削除済みか確認すること。
+# 新規登録は PROVIDER_DEFAULTS（既定 ollama）を使用すること。
 COLLECTION_EMBEDDINGS = {
     "qa_corpus"             : {"model": "text-embedding-3-small", "dims": 1536},
     "qa_cc_news_a02_llm"    : {"model": "text-embedding-3-small", "dims": 1536},
@@ -125,7 +125,7 @@ COLLECTION_EMBEDDINGS = {
     "qa_livedoor_a10_hybrid": {"model": "text-embedding-3-small", "dims": 1536},
 }
 
-# Gemini 3対応コレクション設定（3072次元）
+# Gemini 対応（レガシー・3072次元）コレクション設定
 COLLECTION_EMBEDDINGS_GEMINI = {
     "qa_corpus_gemini"  : {"provider": "gemini", "model": "gemini-embedding-001", "dims": 3072},
     "qa_cc_news_gemini" : {"provider": "gemini", "model": "gemini-embedding-001", "dims": 3072},
@@ -287,7 +287,7 @@ def get_embedding_client(provider: str = None) -> EmbeddingClient:
     毎回の create_embedding_client() 呼び出しを排除する。
 
     Args:
-        provider: "gemini" or "openai"（Noneの場合はデフォルト）
+        provider: 既定 "ollama"（"gemini"/"openai" も指定可。Noneの場合はデフォルト）
 
     Returns:
         EmbeddingClientインスタンス（キャッシュ済み）
@@ -580,7 +580,7 @@ def embed_texts(
         埋め込みベクトルのリスト
     """
     # Ollama統合関数に委譲
-    return embed_texts_unified(texts, provider="ollama", batch_size=batch_size)  # [MIGRATION] "openai" → "ollama"
+    return embed_texts_unified(texts, provider="ollama", batch_size=batch_size)
 
 
 def embed_query(
@@ -600,11 +600,11 @@ def embed_query(
         埋め込みベクトル
     """
     # Ollama統合関数に委譲
-    return embed_query_unified(text, provider="ollama")  # [MIGRATION] "openai" → "ollama"
+    return embed_query_unified(text, provider="ollama")
 
 
 # =====================================================
-# Gemini 3 Migration: 抽象化レイヤーを使用した埋め込み関数
+# 抽象化レイヤーを使用した埋め込み関数（既定 Ollama）
 # =====================================================
 
 def embed_texts_unified(
@@ -615,11 +615,11 @@ def embed_texts_unified(
     """
     テキストをEmbeddingに変換（プロバイダー抽象化版）
 
-    Gemini 3 Migration対応: OpenAIとGeminiの両方に対応
+    既定は Ollama。OpenAI/Gemini にも対応
 
     Args:
         texts: テキストリスト
-        provider: "gemini" or "openai"（Noneの場合はデフォルト）
+        provider: 既定 "ollama"（"gemini"/"openai" も指定可。Noneの場合はデフォルト）
         batch_size: バッチサイズ
 
     Returns:
@@ -672,11 +672,11 @@ def embed_query_unified(
     """
     クエリテキストを埋め込みベクトルに変換（プロバイダー抽象化版）
 
-    Gemini 3 Migration対応: OpenAIとGeminiの両方に対応
+    既定は Ollama。OpenAI/Gemini にも対応
 
     Args:
         text: 埋め込むテキスト
-        provider: "gemini" or "openai"（Noneの場合はデフォルト）
+        provider: 既定 "ollama"（"gemini"/"openai" も指定可。Noneの場合はデフォルト）
 
     Returns:
         埋め込みベクトル（Gemini: 3072次元, OpenAI: 1536次元）
@@ -779,12 +779,12 @@ def create_collection_for_provider(
     """
     プロバイダーに応じた次元数でコレクションを作成
 
-    Gemini 3 Migration対応: 次元数を自動設定
+    次元数をプロバイダー別に自動設定
 
     Args:
         client: Qdrantクライアント
         name: コレクション名
-        provider: "gemini" or "openai"
+        provider: 既定 "ollama"（"gemini"/"openai" も指定可）
         recreate: 再作成フラグ
         use_sparse: Hybrid Search用Sparse Vectorを有効化
 
@@ -812,7 +812,7 @@ def get_provider_vector_size(provider: str = None) -> int:
     プロバイダーに応じたベクトル次元数を取得
 
     Args:
-        provider: "gemini" or "openai"
+        provider: 既定 "ollama"（"gemini"/"openai" も指定可）
 
     Returns:
         次元数（Gemini: 3072, OpenAI: 1536）
@@ -1243,7 +1243,7 @@ __all__ = [
     "COLLECTION_EMBEDDINGS",
     "COLLECTION_CSV_MAPPING",
 
-    # Gemini 3 Migration: プロバイダー設定
+    # プロバイダー設定
     "DEFAULT_EMBEDDING_PROVIDER",
     "PROVIDER_DEFAULTS",
     "COLLECTION_EMBEDDINGS_GEMINI",
@@ -1270,7 +1270,7 @@ __all__ = [
     "embed_texts",
     "embed_query",
 
-    # Gemini 3 Migration: 埋め込み（抽象化版）
+    # 埋め込み（抽象化版）
     "embed_texts_unified",
     "embed_query_unified",
     "get_embedding_client",
