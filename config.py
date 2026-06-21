@@ -22,40 +22,44 @@ from typing import Any, Dict, List, Optional
 # ===================================================================
 
 class ModelConfig:
-    """LLM モデル設定 [MIGRATION] Gemini → Anthropic Claude"""
+    """LLM モデル設定（Ollama ローカルLLM）
 
-    # [MIGRATION] 利用可能なモデル一覧: Gemini → Claude
+    後方互換のための汎用モデル設定クラス（`AppConfig` のベース）。
+    実運用のモデル定義は `GeminiConfig`（Ollama）を参照すること。
+    """
+
+    # 利用可能なモデル一覧（Ollama）
     AVAILABLE_MODELS: List[str] = [
-        "claude-sonnet-4-6",          # 推奨デフォルト（バランス型）
-        "claude-opus-4-7",            # 最高性能・複雑タスク向け
-        "claude-opus-4-6",            # Opus 前世代（後方互換）
-        "claude-sonnet-4-5",          # Sonnet 前世代（後方互換）
-        "claude-haiku-4-5-20251001",  # 高速・低コスト
+        "gemma4:e4b",                 # 推奨デフォルト（ローカル）
+        "llama3.2",                   # ローカル・高速
+        "llama3.2:3b",                # 軽量版
+        "qwen2.5:7b",                 # 多言語対応
+        "mistral",                    # 汎用
+        "gemma2",                     # 軽量
     ]
 
-    # [MIGRATION] デフォルトモデル: "gemini-3-flash-preview" → "claude-sonnet-4-6"
-    DEFAULT_MODEL: str = "claude-sonnet-4-6"
+    # デフォルトモデル（Ollama）
+    DEFAULT_MODEL: str = "gemma4:e4b"
 
-    # temperatureパラメータをサポートしないモデル
-    # Geminiでは全モデルでtemperatureがサポートされる
+    # temperatureパラメータをサポートしないモデル（Ollama では全モデルで対応）
     NO_TEMPERATURE_MODELS: List[str] = []
 
-    # モデル料金（$/1M tokens）
+    # モデル料金（ローカル実行のため全て 0.0）
     MODEL_PRICING: Dict[str, Dict[str, float]] = {
-        "gemini-3-pro-preview": {"input": 0.00125, "output": 0.010},
-        "gemini-2.5-flash-preview": {"input": 0.00015, "output": 0.0035},
-        "gemini-2.0-flash": {"input": 0.0001, "output": 0.0004},
-        "gemini-1.5-pro": {"input": 0.00125, "output": 0.005},
-        "gemini-1.5-flash": {"input": 0.000075, "output": 0.0003},
+        "gemma4:e4b":  {"input": 0.0, "output": 0.0},
+        "llama3.2":    {"input": 0.0, "output": 0.0},
+        "qwen2.5:7b":  {"input": 0.0, "output": 0.0},
+        "mistral":     {"input": 0.0, "output": 0.0},
+        "gemma2":      {"input": 0.0, "output": 0.0},
     }
 
     # モデル制限
     MODEL_LIMITS: Dict[str, Dict[str, int]] = {
-        "gemini-3-pro-preview": {"max_tokens": 1000000, "max_output": 64000},
-        "gemini-2.5-flash-preview": {"max_tokens": 1000000, "max_output": 64000},
-        "gemini-2.0-flash": {"max_tokens": 1000000, "max_output": 8192},
-        "gemini-1.5-pro": {"max_tokens": 1000000, "max_output": 8192},
-        "gemini-1.5-flash": {"max_tokens": 1000000, "max_output": 8192},
+        "gemma4:e4b":  {"max_tokens": 128000, "max_output": 8192},
+        "llama3.2":    {"max_tokens": 128000, "max_output": 8192},
+        "qwen2.5:7b":  {"max_tokens": 32000,  "max_output": 8192},
+        "mistral":     {"max_tokens": 32000,  "max_output": 8192},
+        "gemma2":      {"max_tokens": 8192,   "max_output": 8192},
     }
 
     @classmethod
@@ -70,13 +74,12 @@ class ModelConfig:
 
     @classmethod
     def get_model_pricing(cls, model: str) -> Dict[str, float]:
-        """モデルの料金を取得"""
-        return cls.MODEL_PRICING.get(model, {"input": 0.00015, "output": 0.0006})
+        """モデルの料金を取得（ローカル実行のため 0.0）"""
+        return cls.MODEL_PRICING.get(model, {"input": 0.0, "output": 0.0})
 
     @classmethod
     def uses_max_completion_tokens(cls, model: str) -> bool:
-        """max_completion_tokensを使用するモデルかどうか"""
-        # Geminiでは全モデルでmax_output_tokensを使用
+        """max_completion_tokensを使用するモデルかどうか（Ollama では max_tokens を使用）"""
         return False
 
 
@@ -345,8 +348,8 @@ class QdrantConfig:
     DOCKER_IMAGE: str = "qdrant/qdrant"
     HEALTH_CHECK_ENDPOINT: str = "/collections"
     DEFAULT_TIMEOUT: int = 30
-    DEFAULT_VECTOR_SIZE: int = 3072  # gemini-embedding-001 (MRL: 768/1536/3072)
-    DEFAULT_EMBEDDING_MODEL: str = "gemini-embedding-001"
+    DEFAULT_VECTOR_SIZE: int = 768  # nomic-embed-text（Ollama Embedding）
+    DEFAULT_EMBEDDING_MODEL: str = "nomic-embed-text"
 
 
 # ===================================================================
@@ -389,7 +392,7 @@ class CeleryConfig:
     ENABLE_UTC: bool = True
     TASK_TIME_LIMIT: int = 300  # 5分
     TASK_SOFT_TIME_LIMIT: int = 240  # 4分
-    WORKER_CONCURRENCY: int = 8  # Gemini APIレート制限対策のためデフォルトを8に設定
+    WORKER_CONCURRENCY: int = 8  # Ollama への同時リクエスト数を抑えるためデフォルトを8に設定
     WORKER_PREFETCH_MULTIPLIER: int = 1
 
 
@@ -404,13 +407,13 @@ class CohereConfig:
 
 
 # ===================================================================
-# Gemini API設定
+# Ollama モデル設定
 # ===================================================================
 
 class GeminiConfig:
-    """Ollama モデル設定（[MIGRATION] GeminiConfig → OpenAI → Ollama）"""
+    """Ollama モデル設定（クラス名は後方互換のため GeminiConfig のまま・値は Ollama）"""
 
-    # 利用可能なモデル一覧 [MIGRATION openai→ollama]
+    # 利用可能なモデル一覧（Ollama）
     AVAILABLE_MODELS: List[str] = [
         "gemma4:e4b",                  # デフォルト推奨（Google Gemma 4 4B / ローカル）
         "gemma4:26b-a4b-it-q4_K_M",   # Gemma 4 26B 量子化版（高性能）
@@ -585,7 +588,7 @@ class AgentConfig:
 class LLMProviderConfig:
     """LLMプロバイダー設定"""
 
-    # デフォルトプロバイダー [MIGRATION openai→ollama]
+    # デフォルトプロバイダー（Ollama ローカルLLM）
     DEFAULT_LLM_PROVIDER: str = "ollama"
     DEFAULT_EMBEDDING_PROVIDER: str = "ollama"
 
