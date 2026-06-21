@@ -1,5 +1,5 @@
 # helper_api.py
-# OpenAI API関連とコア機能（後方互換レイヤー）
+# LLM API関連とコア機能（Ollama デフォルト・マルチプロバイダー対応／後方互換レイヤー）
 # -----------------------------------------
 """
 helper_api.py - 後方互換レイヤー
@@ -28,24 +28,23 @@ from typing import Any, Dict, List, Literal, Union
 # ===================================================================
 # -----------------------------------------------------
 # API型定義（Chat Completions 互換）
-# [MIGRATION openai→ollama] Responses API → Chat Completions API
 # EasyInputMessageParam / Response は Responses API 専用型のため、
 # Ollama（Chat Completions のみ対応）では dict ベースの互換型で代替する。
 # -----------------------------------------------------
 from openai.types.chat.chat_completion import ChatCompletion
 
 from helper.helper_llm import (
-    AnthropicClient,  # [MIGRATION 追加] migration資料 ⑩
+    AnthropicClient,
     LLMClient,
-    OllamaClient,  # [MIGRATION openai→ollama] 追加
+    OllamaClient,
     OpenAIClient,  # 後方互換性のため再エクスポート
 )
 from helper.helper_llm import (
     GeminiClient as GeminiLLMClient,
 )
 
-# Gemini 3 Migration: 抽象化レイヤー
-from helper.helper_llm import (  # [FIXED] helper_llm → helper.helper_llm
+# LLM クライアント抽象化レイヤー
+from helper.helper_llm import (
     create_llm_client as create_unified_llm_client,
 )
 from services.cache_service import (
@@ -340,11 +339,10 @@ class ResponseProcessor:
 
 
 # ==================================================
-# Gemini 3 Migration: 統合LLMクライアント
+# 統合LLMクライアント（Ollama デフォルト・マルチプロバイダー対応）
 # ==================================================
 
 # デフォルトプロバイダー（環境変数で設定可能）
-# [MIGRATION openai→ollama] デフォルトを "ollama" に変更
 DEFAULT_LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")  # "ollama" | "openai" | "anthropic" | "gemini"
 
 
@@ -352,15 +350,15 @@ class UnifiedLLMClient:
     """
     プロバイダー切り替え対応の統合LLMクライアント
 
-    Gemini 3 Migration: OpenAIとGeminiの両方に対応する統一インターフェース
+    Ollama をデフォルトとし、openai / anthropic / gemini にも対応する統一インターフェース
 
     Usage:
-        # デフォルト（Gemini）
+        # デフォルト（Ollama）
         client = UnifiedLLMClient()
         response = client.generate("Hello, world!")
 
         # 明示的にプロバイダーを指定
-        client = UnifiedLLMClient(provider="openai")
+        client = UnifiedLLMClient(provider="ollama")
         response = client.generate("Hello, world!")
 
         # 構造化出力（Pydantic対応）
@@ -370,7 +368,7 @@ class UnifiedLLMClient:
     def __init__(self, provider: str = None, **kwargs):
         """
         Args:
-            provider: "gemini" or "openai"（Noneの場合はデフォルト）
+            provider: "ollama" / "openai" / "anthropic" / "gemini"（Noneの場合はデフォルト: ollama）
             **kwargs: プロバイダー固有の初期化パラメータ
         """
         self.provider = provider or DEFAULT_LLM_PROVIDER
@@ -460,18 +458,15 @@ def create_llm_client(provider: str = None, **kwargs) -> UnifiedLLMClient:
     統合LLMクライアントのファクトリ関数
 
     Args:
-        provider: "gemini" or "openai"
+        provider: "ollama" / "openai" / "anthropic" / "gemini"（省略時はデフォルト: ollama）
         **kwargs: クライアント初期化パラメータ
 
     Returns:
         UnifiedLLMClientインスタンス
 
     Example:
-        # Geminiクライアント
-        client = create_llm_client("gemini")
-
-        # OpenAIクライアント
-        client = create_llm_client("openai")
+        # Ollamaクライアント（デフォルト）
+        client = create_llm_client("ollama")
     """
     return UnifiedLLMClient(provider=provider, **kwargs)
 
@@ -524,9 +519,9 @@ __all__ = [
 
     'AnthropicClient',           # 後方互換のため残存
     'GeminiLLMClient',           # 後方互換のため残存
-    'OllamaClient',              # [MIGRATION openai→ollama] 追加
+    'OllamaClient',
 
-    # Gemini 3 Migration: 統合クライアント
+    # 統合クライアント
     'UnifiedLLMClient',
     'create_llm_client',
     'get_default_llm_client',

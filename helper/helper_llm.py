@@ -1,14 +1,8 @@
 """
-LLMクライアント抽象化レイヤー
+Ollama 既定のマルチプロバイダー LLM クライアント抽象化レイヤー
 
-OpenAI API / Gemini API / Anthropic API / Ollama の4プロバイダーに対応する統一インターフェースを提供。
-
-Migration: Gemini → Anthropic (2026-04-20) → OpenAI (2026-04-25) → Ollama (2026-05-20)
-  - AnthropicClient クラスを追加
-  - generate_with_tools() を追加（ReAct Agent 用）
-  - create_llm_client() に "anthropic" プロバイダーを追加
-  - LLM_MODELS / LLM_PRICING / LLM_LIMITS に Claude モデルを追加
-  - [MIGRATION openai→ollama] OllamaClient 追加、DEFAULT_LLM_PROVIDER="ollama"
+Ollama をデフォルトとし、OpenAI API / Gemini API / Anthropic API も
+切り替えて利用できる統一インターフェースを提供する。
 """
 
 import json
@@ -80,8 +74,7 @@ LLM_MODELS_OPENAI = [
     "gpt-4o-mini",
 ]
 
-# --- Ollama モデル (新規追加) ---
-# [MIGRATION openai→ollama]
+# --- Ollama モデル ---
 LLM_MODELS_OLLAMA = [
     "llama3.2",
     "llama3.2:3b",
@@ -129,7 +122,6 @@ LLM_PRICING = {
     "claude-haiku-4-5-20251001": {"input": 0.0008,  "output": 0.004  },
 
     # Ollama (ローカル実行のため無料)
-    # [MIGRATION openai→ollama]
     **{model: {"input": 0.0, "output": 0.0} for model in LLM_MODELS_OLLAMA},
 
     # Gemini (既存)
@@ -168,7 +160,6 @@ LLM_LIMITS = {
     "claude-haiku-4-5-20251001": {"max_tokens": 200000,  "max_output": 8192 },
 
     # Ollama (ローカル実行)
-    # [MIGRATION openai→ollama]
     **{model: {"max_tokens": 128000, "max_output": 8192} for model in LLM_MODELS_OLLAMA},
 
     # Gemini (既存)
@@ -185,7 +176,7 @@ LLM_LIMITS = {
 # ================================================================
 
 EMBEDDING_MODELS = [
-    "nomic-embed-text",     # [MIGRATION] Ollama デフォルト (768次元)
+    "nomic-embed-text",     # Ollama デフォルト (768次元)
     "mxbai-embed-large",    # Ollama 大容量モデル (1024次元)
     "all-minilm",           # Ollama 軽量モデル (384次元)
     "gemini-embedding-001",
@@ -218,9 +209,8 @@ EMBEDDING_DIMS = {
 #   export LLM_PROVIDER=openai   # openai_grace_agent
 #   export LLM_PROVIDER=gemini   # gemini_grace_agent
 # ================================================================
-# [MIGRATION] デフォルトプロバイダーを "gemini" → "anthropic" に変更
-# 環境変数 LLM_PROVIDER で切り替え可能（gemini_grace_agent は LLM_PROVIDER=gemini を設定）
-DEFAULT_LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")  # [MIGRATION openai→ollama]
+# 環境変数 LLM_PROVIDER で切り替え可能（既定は ollama）
+DEFAULT_LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")
 
 
 # ================================================================
@@ -258,7 +248,6 @@ def _resolve_schema_refs(schema: dict) -> dict:
     Ollama ローカルモデル（llama3.2, gemma4:e4b 等）は $ref を含む複雑な
     スキーマを解釈できずスキーマ定義をそのまま返してしまうため、
     展開したシンプルなスキーマを使用する。全 Ollama モデルに適用する。
-    [MIGRATION openai→ollama] chunking/async_api_client.py から移植
     """
     defs = schema.get("$defs", {})
 
@@ -421,7 +410,6 @@ class OpenAIClient(LLMClient):
     ) -> tuple:
         """
         Tool Use を含む ReAct ループの 1 ステップを実行する。
-        [MIGRATION anthropic→openai]
         """
         import json as _json
 
@@ -706,8 +694,7 @@ class AnthropicClient(LLMClient):
 
 
 # ================================================================
-# Ollama クライアント（新規追加）
-# [MIGRATION openai→ollama] 2026-05-20
+# Ollama クライアント
 # ================================================================
 
 class OllamaClient(LLMClient):
@@ -747,7 +734,7 @@ class OllamaClient(LLMClient):
             or kwargs.pop("max_tokens", 4096)
         )
         temperature = kwargs.pop("temperature", None)
-        # [MIGRATION openai→ollama] JSON モード強制オプション（llama3.2 で空レスポンス防止）
+        # JSON モード強制オプション（llama3.2 で空レスポンス防止）
         response_format = kwargs.pop("response_format", None)
 
         messages = []
@@ -784,7 +771,7 @@ class OllamaClient(LLMClient):
         )
         temperature = kwargs.pop("temperature", 0.1)
 
-        # [MIGRATION openai→ollama] $ref/$defs を解決してフラットなスキーマを使用
+        # $ref/$defs を解決してフラットなスキーマを使用
         # llama3.2 は $ref を含む複雑なスキーマを解釈できずスキーマ定義をオウム返しする
         raw_schema = response_schema.model_json_schema()
         flat_schema = _resolve_schema_refs(raw_schema)
@@ -964,8 +951,7 @@ class OllamaClient(LLMClient):
 # ファクトリ関数
 # ================================================================
 
-# [MIGRATION openai→ollama] デフォルト引数: "openai" → "ollama"
-def create_llm_client(provider: str = "ollama", **kwargs) -> LLMClient:  # [MIGRATION openai→ollama]
+def create_llm_client(provider: str = "ollama", **kwargs) -> LLMClient:
     """
     LLM クライアントのファクトリ関数
 
