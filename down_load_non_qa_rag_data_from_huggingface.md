@@ -1,7 +1,7 @@
 ## 非Q&A型RAGデータ処理ツール ドキュメント
 - (down_load_non_qa_rag_data_from_huggingface.py)
 
-**Version 1.0** | 最終更新: 2026-02-16
+**Version 1.1** | 最終更新: 2026-06-21
 ![dl_huggingface_img.png](assets/dl_huggingface_img.png)
 ---
 
@@ -29,7 +29,7 @@
 - HuggingFace Hub / 直接URL からのデータセットダウンロード
 - データセット種別に応じた品質検証（Wikipedia / ニュース / 学術 / コード）
 - RAG 用テキスト抽出・クレンジング・結合前処理
-- トークン使用量とコストの推定表示
+- トークン使用量の推定表示（ローカル実行のため API コストは発生しない）
 - CSV / TXT / JSON フォーマットでの出力・保存
 
 ### 各責務対応のモジュール
@@ -39,7 +39,7 @@
 | 1 | データセットダウンロード | `down_load_non_qa_rag_data_from_huggingface.py` | HuggingFace streaming / Livedoor 直接DL |
 | 2 | 品質検証 | `down_load_non_qa_rag_data_from_huggingface.py`, `helper.helper_rag` | データセット別検証 + 汎用検証 |
 | 3 | テキスト前処理 | `down_load_non_qa_rag_data_from_huggingface.py`, `helper.helper_rag` | テキスト抽出・クレンジング |
-| 4 | トークン推定 | `down_load_non_qa_rag_data_from_huggingface.py`, `config` | モデル料金情報と推定計算 |
+| 4 | トークン推定 | `down_load_non_qa_rag_data_from_huggingface.py`, `config` | モデル制限情報と推定計算（ローカル実行・コストなし） |
 | 5 | 出力・保存 | `helper.helper_rag` | CSV/TXT/JSON 出力と OUTPUT フォルダ保存 |
 
 ### 主要機能一覧
@@ -49,9 +49,9 @@
 | `NonQARAGConfig` | データセット設定を一元管理するクラス |
 | `NonQARAGConfig.get_config()` | 指定データセットタイプの設定辞書を取得 |
 | `NonQARAGConfig.get_all_datasets()` | 全データセットタイプキーのリストを取得 |
-| `select_model()` | サイドバーに Gemini モデル選択ウィジェットを表示 |
-| `show_model_info()` | 選択モデルの料金・制限情報を表示 |
-| `estimate_token_usage()` | DataFrame のトークン使用量と概算コストを表示 |
+| `select_model()` | サイドバーに Ollama モデル選択ウィジェットを表示 |
+| `show_model_info()` | 選択モデルの制限情報を表示（ローカル実行のためコストなし） |
+| `estimate_token_usage()` | DataFrame のトークン使用量を表示（ローカル実行・コストなし） |
 | `_import_hf_load_dataset()` | HuggingFace datasets の安全なインポート（名前衝突回避） |
 | `validate_wikipedia_data_specific()` | Wikipedia データ固有の検証 |
 | `validate_news_data_specific()` | ニュースデータ固有の検証 |
@@ -87,7 +87,7 @@ flowchart TB
 
     subgraph INTERNAL["内部モジュール"]
         HELPER["helper.helper_rag"]
-        GEMINI_CFG["config.GeminiConfig"]
+        GEMINI_CFG["Ollama設定(GeminiConfig)"]
     end
 
     subgraph EXTERNAL["外部サービス層"]
@@ -108,6 +108,13 @@ flowchart TB
     IMPORT_HF --> HF
     LIVEDOOR --> RONDHUIT
     MAIN --> FS
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class BROWSER,UPLOAD,MAIN,CONFIG_CLS,VALIDATE,EXTRACT,LIVEDOOR,IMPORT_HF,HELPER,GEMINI_CFG,HF,RONDHUIT,FS default
+style CLIENT fill:#1a1a1a,stroke:#fff,color:#fff
+style MODULE fill:#1a1a1a,stroke:#fff,color:#fff
+style INTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 1.2 データフロー
@@ -174,6 +181,17 @@ flowchart TB
     MAIN_FN --> LIVEDOOR
     MAIN_FN --> PROCESS
     EXTRACT --> NONQA
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class DATASET_CONFIGS,GET_CFG,GET_ALL,SEL_MODEL,SHOW_INFO,EST_TOKEN,IMPORT_HF,V_WIKI,V_NEWS,V_SCI,V_CODE,V_SO,DL_LIVE,LD_LIVE,EXTRACT,MAIN_FN default
+style CONST fill:#1a1a1a,stroke:#fff,color:#fff
+style NONQA fill:#1a1a1a,stroke:#fff,color:#fff
+style UI_UTIL fill:#1a1a1a,stroke:#fff,color:#fff
+style IMPORT_FN fill:#1a1a1a,stroke:#fff,color:#fff
+style VALIDATE fill:#1a1a1a,stroke:#fff,color:#fff
+style LIVEDOOR fill:#1a1a1a,stroke:#fff,color:#fff
+style PROCESS fill:#1a1a1a,stroke:#fff,color:#fff
+style ENTRY fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 2.2 外部依存関係
@@ -192,7 +210,7 @@ flowchart TB
 | `helper.helper_rag.save_files_to_output` | OUTPUT フォルダへのファイル保存 |
 | `helper.helper_rag.clean_text` | テキストクレンジング |
 | `helper.helper_rag.safe_execute` | デコレータ（例外安全実行） |
-| `config.GeminiConfig` | Gemini モデルの料金・制限情報 |
+| `config.GeminiConfig` | Ollama モデル設定（`GeminiConfig`）の制限情報。ローカル実行のため API コストは発生しない |
 
 ---
 
@@ -213,9 +231,9 @@ flowchart TB
 
 | 関数名 | 概要 |
 |-------|------|
-| `select_model()` | サイドバーにモデル選択ウィジェットを表示し、選択モデル名を返す |
-| `show_model_info(model)` | 選択モデルの料金・制限情報をキャプション表示 |
-| `estimate_token_usage(df, model)` | DataFrame の推定トークン数とコストを表示 |
+| `select_model()` | サイドバーに Ollama モデル選択ウィジェットを表示し、選択モデル名を返す |
+| `show_model_info(model)` | 選択モデルの制限情報をキャプション表示（ローカル実行のためコストなし） |
+| `estimate_token_usage(df, model)` | DataFrame の推定トークン数を表示（ローカル実行・コストなし） |
 
 #### インポート関数
 
@@ -345,12 +363,12 @@ def select_model() -> str
 | 項目 | 内容 |
 |------|------|
 | **Input** | なし（`GeminiConfig.AVAILABLE_MODELS` を内部参照） |
-| **Process** | 1. `st.selectbox` でモデル一覧を表示<br>2. ユーザーの選択を取得 |
-| **Output** | `str`: 選択されたモデル名 |
+| **Process** | 1. `st.selectbox`（ラベル "🤖 使用モデル"、`index=0`、help="処理に使用するOllamaモデルを選択してください"）で Ollama モデル一覧を表示<br>2. ユーザーの選択を取得 |
+| **Output** | `str`: 選択された Ollama モデル名 |
 
 **戻り値例**:
 ```python
-"gemini-2.0-flash"
+"gemma4:e4b"
 ```
 
 ```python
@@ -358,12 +376,12 @@ def select_model() -> str
 with st.sidebar:
     model = select_model()
     print(model)
-    # 出力: gemini-2.0-flash
+    # 出力: gemma4:e4b
 ```
 
 #### `show_model_info`
 
-**概要**: 選択モデルの入出力料金と最大出力トークン数をキャプション表示する。
+**概要**: 選択モデルの最大出力トークン数をキャプション表示する。Ollama はローカル実行のため API コストは発生しない。
 
 ```python
 def show_model_info(model: str) -> None
@@ -371,23 +389,23 @@ def show_model_info(model: str) -> None
 
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
-| `model` | str | - | モデル名 |
+| `model` | str | - | Ollama モデル名 |
 
 | 項目 | 内容 |
 |------|------|
 | **Input** | `model: str` |
-| **Process** | 1. `GeminiConfig.get_model_pricing()` で料金取得<br>2. `GeminiConfig.get_model_limits()` で制限取得<br>3. `st.caption` でフォーマット表示 |
+| **Process** | 1. `GeminiConfig.get_model_limits()` で制限取得（料金は取得しない）<br>2. `st.caption` でフォーマット表示 |
 | **Output** | `None`（Streamlit UI に表示） |
 
 ```python
 # 使用例
-show_model_info("gemini-2.0-flash")
-# UI表示: 💡 gemini-2.0-flash | 入力: $0.0001/1K tokens 出力: $0.0004/1K tokens | 最大出力: 8,192 tokens
+show_model_info("gemma4:e4b")
+# UI表示: 💡 gemma4:e4b　|　最大出力: 8,192 tokens　|　ローカル実行のため API コストは発生しません
 ```
 
 #### `estimate_token_usage`
 
-**概要**: DataFrame の `Combined_Text` カラムからトークン使用量と概算コストを推定し、3 カラムのメトリクスで表示する。
+**概要**: DataFrame の `Combined_Text` カラムからトークン使用量を推定し、3 カラムのメトリクスで表示する。ローカル実行のため API コストは発生せず、コスト計算は行わない。
 
 ```python
 def estimate_token_usage(df: pd.DataFrame, model: str) -> None
@@ -396,20 +414,20 @@ def estimate_token_usage(df: pd.DataFrame, model: str) -> None
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
 | `df` | pd.DataFrame | - | `Combined_Text` カラムを含む DataFrame |
-| `model` | str | - | コスト計算に使用するモデル名 |
+| `model` | str | - | 表示対象の Ollama モデル名（コスト計算には使用しない） |
 
 | 項目 | 内容 |
 |------|------|
 | **Input** | `df: pd.DataFrame`, `model: str` |
-| **Process** | 1. `Combined_Text` の総文字数を計算<br>2. 文字数 / 2.0 でトークン数を概算（日英混在向け）<br>3. トークン数 × 入力単価でコスト算出<br>4. `st.metric` で3カラム表示 |
+| **Process** | 1. `Combined_Text` の総文字数を計算<br>2. 文字数 / 2.0 でトークン数を概算（日英混在向け）<br>3. `st.metric` で3カラム表示（推定トークン数 / 総文字数 / API コスト="なし（ローカル実行）"）<br>※ USD コスト算出や `get_model_pricing` 呼び出しは行わない |
 | **Output** | `None`（Streamlit UI に表示） |
 
 > 📝 **注意**: `Combined_Text` カラムが存在しない場合は警告を表示して早期リターンする。
 
 ```python
 # 使用例
-estimate_token_usage(df_processed, "gemini-2.0-flash")
-# UI表示: 推定トークン数: 125,000 | 総文字数: 250,000 | 推定コスト: $0.0125
+estimate_token_usage(df_processed, "gemma4:e4b")
+# UI表示: 推定トークン数: 125,000 | 総文字数: 250,000 | API コスト: なし（ローカル実行）
 ```
 
 ---
@@ -850,6 +868,7 @@ print(f"取得: {len(df_processed)}件")
 | バージョン | 変更内容 |
 |-----------|---------|
 | 1.0 | 初版作成 |
+| 1.1 (2026-06-21) | Ollama ネイティブ化：コスト表示の撤去（ローカル実行）・実装整合・Mermaid §7 スタイル整備 |
 
 ---
 
@@ -878,7 +897,7 @@ flowchart LR
 
     subgraph INTERNAL["内部モジュール"]
         HELPER["helper.helper_rag"]
-        GEMINI_CFG["config.GeminiConfig"]
+        GEMINI_CFG["Ollama設定(GeminiConfig)"]
     end
 
     MODULE --> ST
@@ -899,7 +918,13 @@ flowchart LR
     HELPER --> H2[save_files_to_output]
     HELPER --> H3[clean_text]
     HELPER --> H4[safe_execute]
-    GEMINI_CFG --> G1[AVAILABLE_MODELS]
-    GEMINI_CFG --> G2[get_model_pricing]
-    GEMINI_CFG --> G3[get_model_limits]
+    GEMINI_CFG --> G1["AVAILABLE_MODELS - select_model が参照"]
+    GEMINI_CFG --> G3["get_model_limits - show_model_info が参照"]
+    GEMINI_CFG --> G2["get_model_pricing - 本スクリプトでは未使用"]
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class MODULE,ST,PD,HF_DS,JSON_LIB,IO_LIB,URL_LIB,TAR_LIB,DT_LIB,PATH_LIB,LOG_LIB,TYPING,HELPER,GEMINI_CFG,H1,H2,H3,H4,G1,G2,G3 default
+style EXT fill:#1a1a1a,stroke:#fff,color:#fff
+style STDLIB fill:#1a1a1a,stroke:#fff,color:#fff
+style INTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 ```
