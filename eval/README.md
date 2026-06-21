@@ -16,8 +16,8 @@
 
 - GRACE 本体（`grace` パッケージ・`helper_llm`）と同じ作業ツリーで実行する
 - Qdrant が稼働している（`executor` の rag_search が参照）
-- `ANTHROPIC_API_KEY` が設定されている
-- 評価コレクション: **`cc_news_2per_anthropic`**（payload: `question` / `answer` / `source`）
+- ローカル Ollama が起動している（API キー不要・任意で `OLLAMA_BASE_URL`）
+- 評価コレクション: **`cc_news_2per_ollama`**（payload: `question` / `answer` / `source`）
 
 ## 手順
 
@@ -25,7 +25,7 @@
 
 ```bash
 python -m eval.build_dataset \
-  --collection cc_news_2per_anthropic \
+  --collection cc_news_2per_ollama \
   --limit 100 \
   --output eval/dataset.jsonl
 ```
@@ -60,6 +60,7 @@ total_cost_usd                      0.0000
 - **accuracy**: LLM ジャッジが `correct` と判定した割合
 - **hallucination_rate**: 根拠なく事実を捏造したと判定された割合
 - **ECE**: confidence と実正解率のズレ（較正誤差）。S1 較正の改善対象
+- **total_cost_usd**: ローカル Ollama 実行のため API コストは発生せず、常に `0.0000`（トークン集計のみ）
 
 ## DoD（S0 完了条件）
 
@@ -96,7 +97,7 @@ python -m eval.run_eval --report logs/eval_calibrated.json
 
 **DoD**：S0 の **ECE がベースラインより改善**。較正は事後変換のため fit 集合上で ECE を
 必ず縮小する（`tests/grace/test_calibration.py` で検証）。実データでの最終確認は
-`ANTHROPIC_API_KEY` + Qdrant 稼働下での `run_eval` → `calibrate` → `run_eval` で行う。
+ローカル Ollama + Qdrant 稼働下での `run_eval` → `calibrate` → `run_eval` で行う。
 
 ## S3｜ハイブリッド ReAct スケルトン（実装済み）
 
@@ -118,7 +119,7 @@ Plan は「初期仮説」として保持するハイブリッド方式。
 - 設定：`executor.react_enabled` / `react_complexity_threshold` / `react_max_iterations`。
 
 **DoD**：S0 の **正解率が静的版以上**、かつ複雑質問で改善。
-実データでの確認は `ANTHROPIC_API_KEY` + Qdrant 稼働下で、`react_enabled` の
+実データでの確認はローカル Ollama + Qdrant 稼働下で、`react_enabled` の
 true/false を切り替えて `run_eval` のスコアを比較する（静的版とのA/B）。
 ロジックは `tests/grace/test_react.py`（API 非依存・mock）で検証済み。
 
@@ -130,7 +131,7 @@ hallucination / latency / cost を差分テーブルで比較する。
 ```bash
 python -m eval.ab_compare \
     --dataset eval/dataset.jsonl --limit 20 \
-    --collection cc_news_2per_anthropic \
+    --collection cc_news_2per_ollama \
     --output-dir logs/ab
 # → logs/ab/eval_static.json, logs/ab/eval_react.json, logs/ab/ab_summary.json
 ```
@@ -146,5 +147,5 @@ python -m eval.ab_compare \
 
 - `run_eval.py` / `build_dataset.py` 冒頭の import は v1 のレイアウト（`grace.*`, `helper_llm`,
   `qdrant_client_wrapper`）を前提にしている。v2 のモジュール配置が異なる場合は import パスを調整すること。
-- ジャッジは文字列処理用途のため既定で `claude-haiku-4-5-20251001`（Anthropic）を使用（`--judge-model` で変更可）。
-  GRACE 本体（planner/executor/confidence/tools）は `claude-sonnet-4-6` を使用する。
+- ジャッジは既定で Ollama の `gemma4:e4b` を使用（`--judge-model` で変更可）。
+  GRACE 本体（planner/executor/confidence/tools）も Ollama（既定 `gemma4:e4b`／代替 `llama3.2`）を使用する。
