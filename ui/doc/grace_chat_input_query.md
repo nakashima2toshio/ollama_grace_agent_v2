@@ -1,6 +1,6 @@
 # grace_chat_input_query - ユーザークエリ入力〜Embedding処理 詳細設計ドキュメント
 
-**Version 1.1** | 最終更新: 2026-02-09
+**Version 1.2** | 最終更新: 2026-06-21
 
 ---
 
@@ -29,9 +29,9 @@
 
 - ユーザー入力テキストの受け取りとセッション状態への記録
 - ReActAgent への質問の委譲（`execute_turn`）
-- LLM（Gemini）による検索クエリの生成判断（Thought → Action）
+- LLM（Ollama / ローカルLLM）による検索クエリの生成判断（Thought → Action）
 - オプションのキーワード抽出によるクエリ拡張（MeCab/Regex）
-- Gemini Embedding API を用いた Dense ベクトル（3072次元）の生成
+- Ollama Embedding（`nomic-embed-text`）を用いた Dense ベクトル（768次元）の生成
 - スパースベクトル（TF-IDF / BM25系）の生成（ハイブリッド検索有効時）
 - キャッシュ戦略に基づく検索対象コレクションの決定
 - 並列検索エンジンへのクエリとベクトルの引き渡し
@@ -50,13 +50,13 @@
     ├─ (オプション) KeywordExtractor.extract(prompt) → キーワード拡張
     │
     ▼
-[Gemini LLM] → Thought → Action: search_rag_knowledge_base(query=...)
+[Ollama LLM] → Thought → Action: search_rag_knowledge_base(query=...)
     │
     ▼
 [search_rag_knowledge_base_cached(query, session_id, ...)]
     │
     ├─ ステップ1: キャッシュチェック (CollectionCache)
-    ├─ ステップ2: embed_query(query) → Dense Vector (3072D)
+    ├─ ステップ2: embed_query(query) → Dense Vector (768D)
     ├─ ステップ3: embed_sparse_query_unified(query) → Sparse Vector (条件付き)
     │
     ▼
@@ -71,7 +71,7 @@
 - ユーザーの自然言語クエリの受け取りとバリデーション
 - LLM による検索必要性の判断とクエリ生成
 - キーワード抽出によるクエリの意味的拡張（オプション）
-- Gemini Embedding API による Dense ベクトル生成
+- Ollama Embedding（`nomic-embed-text`）による Dense ベクトル生成
 - スパースベクトル（TF-IDF / BM25）の生成（ハイブリッド検索時）
 - キャッシュに基づくコレクション選択の最適化
 - 並列検索エンジンへのベクトルの引き渡し
@@ -85,7 +85,7 @@
 | `KeywordExtractor.extract()` | MeCab/Regex によるキーワード抽出（オプション） |
 | `search_rag_knowledge_base_cached()` | キャッシュ+並列検索のスマート検索エントリポイント |
 | `search_rag_knowledge_base_structured()` | 単一コレクション検索（Embedding → Qdrant） |
-| `embed_query()` | Gemini Embedding API による Dense ベクトル生成 |
+| `embed_query()` | Ollama Embedding（`nomic-embed-text`）による Dense ベクトル生成 |
 | `embed_sparse_query_unified()` | TF-IDF / BM25 系スパースベクトル生成 |
 | `search_collection()` | Qdrant クライアントによるベクトル検索実行 |
 | `CollectionCache.get()` / `.set()` | 前回成功コレクションのキャッシュ管理 |
@@ -110,8 +110,8 @@ flowchart TB
     end
 
     subgraph LLM_LAYER["LLM層"]
-        GEMINI_CHAT["Gemini Chat API<br/>(検索判断・クエリ生成)"]
-        GEMINI_EMB["Gemini Embedding API<br/>(Dense Vector 3072D)"]
+        GEMINI_CHAT["Ollama Chat API<br/>(検索判断・クエリ生成)"]
+        GEMINI_EMB["Ollama Embedding<br/>(Dense Vector 768D)"]
     end
 
     subgraph SEARCH["検索層"]
@@ -122,7 +122,7 @@ flowchart TB
     end
 
     subgraph EMBEDDING["ベクトル生成層"]
-        DENSE["embed_query()<br/>(Dense 3072D)"]
+        DENSE["embed_query()<br/>(Dense 768D)"]
         SPARSE["embed_sparse_query_unified()<br/>(Sparse TF-IDF/BM25)"]
     end
 
@@ -144,6 +144,15 @@ flowchart TB
     STRUCTURED --> QDRANT
     STRUCTURED --> COHERE
     REACT --> UI_DISPLAY
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class UI_INPUT,UI_DISPLAY,REACT,KW,GEMINI_CHAT,GEMINI_EMB,CACHED,STRUCTURED,PARALLEL,CACHE,DENSE,SPARSE,QDRANT,COHERE default
+style CLIENT fill:#1a1a1a,stroke:#fff,color:#fff
+style AGENT fill:#1a1a1a,stroke:#fff,color:#fff
+style LLM_LAYER fill:#1a1a1a,stroke:#fff,color:#fff
+style SEARCH fill:#1a1a1a,stroke:#fff,color:#fff
+style EMBEDDING fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 1.2 データフロー
@@ -151,11 +160,11 @@ flowchart TB
 1. ユーザーが `st.chat_input()` で質問テキスト（prompt）を入力
 2. `ReActAgent.execute_turn(prompt)` に委譲
 3. （オプション）`KeywordExtractor.extract()` でキーワード抽出、プロンプトを拡張
-4. 拡張済みプロンプトを Gemini Chat API に送信
-5. Gemini が `Thought:` で思考し、`Action: search_rag_knowledge_base(query="...")` を決定
+4. 拡張済みプロンプトを Ollama Chat API（OpenAI 互換）に送信
+5. Ollama LLM が `Thought:` で思考し、`Action: search_rag_knowledge_base(query="...")` を決定
 6. ツール関数 `search_rag_knowledge_base_cached()` が呼び出される
 7. キャッシュチェック → コレクション決定
-8. `embed_query(query)` で Dense ベクトル（3072次元）を生成
+8. `embed_query(query)` で Dense ベクトル（768次元）を生成
 9. （ハイブリッド検索有効時）`embed_sparse_query_unified(query)` でスパースベクトルを生成
 10. `search_collection()` で Qdrant にベクトル検索を実行
 11. （オプション）`rerank_results()` で Cohere Rerank を実行
@@ -218,6 +227,15 @@ flowchart TB
     SEARCH_STRUCT --> SEARCH_COL
     SEARCH_STRUCT --> RERANK
     REACT_LOOP --> REFLECTION
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class CHAT_INPUT,EVENT_LOOP,EXECUTE,REACT_LOOP,REFLECTION,SEARCH_CACHED,SEARCH_LEGACY,SEARCH_STRUCT,RERANK,FORMAT,EMBED_DENSE,EMBED_SPARSE,SEARCH_COL,CACHE_GET,CACHE_SET,PARALLEL_SEARCH default
+style UI fill:#1a1a1a,stroke:#fff,color:#fff
+style AGENT_SVC fill:#1a1a1a,stroke:#fff,color:#fff
+style TOOLS fill:#1a1a1a,stroke:#fff,color:#fff
+style WRAPPER fill:#1a1a1a,stroke:#fff,color:#fff
+style CACHE_MOD fill:#1a1a1a,stroke:#fff,color:#fff
+style PARALLEL_MOD fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 2.2 外部依存関係
@@ -225,7 +243,7 @@ flowchart TB
 | ライブラリ | バージョン | 用途 |
 |-----------|-----------|------|
 | `streamlit` | >= 1.28 | UIフレームワーク（チャット入力） |
-| `google-generativeai` | >= 0.3 | Gemini Chat API / Embedding API |
+| `ollama` / OpenAI 互換クライアント | - | Ollama Chat API / Embedding（ローカル実行・APIキー不要） |
 | `qdrant-client` | >= 1.6 | Qdrant ベクトル検索 |
 | `cohere` | >= 4.0 | Rerank API（オプション） |
 
@@ -234,7 +252,7 @@ flowchart TB
 | モジュール | 用途 |
 |-----------|------|
 | `config.AgentConfig` | RAGデフォルトコレクション、検索件数上限 |
-| `config.GeminiConfig` | Geminiモデル名、Embedding モデル設定 |
+| `config.GeminiConfig` | Ollama モデル名、Embedding モデル設定（クラス名は後方互換のため `GeminiConfig` のまま・値は Ollama） |
 | `config.CohereConfig` | Cohere API キー、Rerank モデル |
 | `config.QdrantConfig` | Qdrant URL |
 | `services.agent_service.ReActAgent` | ReAct エージェント |
@@ -284,7 +302,7 @@ flowchart TB
 
 | 関数名 | 概要 |
 |-------|------|
-| `embed_query(query)` | Gemini Embedding API で Dense ベクトル（3072D）を生成 |
+| `embed_query(query)` | Ollama Embedding（`nomic-embed-text`）で Dense ベクトル（768D）を生成 |
 | `embed_sparse_query_unified(query)` | TF-IDF / BM25 系スパースベクトルを生成 |
 
 #### 検索実行関数（qdrant_client_wrapper.py）
@@ -330,7 +348,7 @@ if prompt := st.chat_input("質問を入力してください..."):
 
 #### メソッド: `execute_turn`
 
-**概要**: ReAct ループを実行し、LLM の Thought → Action → Observation サイクルを回す。最終的に Reflection フェーズで回答を推敲する。
+**概要**: ReAct ループを実行し、Ollama（ローカルLLM）の Thought → Action → Observation サイクルを回す。最終的に Reflection フェーズで回答を推敲する。
 
 ```python
 def execute_turn(self, user_input: str) -> Generator[Dict[str, Any], None, None]
@@ -343,7 +361,7 @@ def execute_turn(self, user_input: str) -> Generator[Dict[str, Any], None, None]
 | 項目 | 内容 |
 |------|------|
 | **Input** | `user_input: str` |
-| **Process** | 1. （オプション）KeywordExtractor でキーワードを抽出し、プロンプトを拡張<br>2. 拡張済みプロンプトを Gemini Chat API に送信<br>3. レスポンスの `parts` を解析（text / function_call）<br>4. `function_call` の場合、ツール名と引数を抽出<br>5. ツール関数を実行（`search_rag_knowledge_base` 等）<br>6. ツール結果を `function_response` として Gemini に返送<br>7. 最大10ターンまでループ<br>8. 最終テキストを Reflection フェーズで推敲 |
+| **Process** | 1. （オプション）KeywordExtractor でキーワードを抽出し、プロンプトを拡張<br>2. 拡張済みプロンプトを Ollama Chat API（OpenAI 互換）に送信<br>3. レスポンスを解析（OpenAI 互換の `tool_calls` / `finish_reason`）<br>4. `tool_calls` の場合、ツール名と引数を抽出<br>5. ツール関数を実行（`search_rag_knowledge_base` 等）<br>6. ツール結果を `tool` ロールのメッセージとして Ollama に返送<br>7. 最大10ターンまでループ<br>8. 最終テキストを Reflection フェーズで推敲 |
 | **Output** | `Generator[Dict]`: `{"type": "log"/"tool_call"/"tool_result"/"final_answer", "content": ...}` |
 
 > 📝 **注意**: `execute_turn` はジェネレータとして実装されており、各イベントを `yield` で逐次返却します。grace_chat_page.py はこのイベントをリアルタイムに UI に反映します。
@@ -455,7 +473,7 @@ def search_rag_knowledge_base_structured(
 | 項目 | 内容 |
 |------|------|
 | **Input** | `query`, `collection_name`, `use_hybrid_search` |
-| **Process** | 1. `collection_name` が None の場合、`AgentConfig.RAG_DEFAULT_COLLECTION` を使用<br>2. `check_qdrant_health()` で接続確認<br>3. コレクションの存在確認<br>4. **`embed_query(query)` で Dense ベクトル（3072D）を生成** ← Embedding 生成のコアステップ<br>5. `use_hybrid_search=True` の場合、**`embed_sparse_query_unified(query)` でスパースベクトルを生成**<br>6. `search_collection(client, collection_name, query_vector, sparse_vector, limit=20)` で候補を広く取得<br>7. スパースベクトルエラー時は Dense のみで再試行<br>8. `rerank_results(query, candidates, top_k, threshold=0.2)` で再評価<br>9. メトリクス記録 |
+| **Process** | 1. `collection_name` が None の場合、`AgentConfig.RAG_DEFAULT_COLLECTION` を使用<br>2. `check_qdrant_health()` で接続確認<br>3. コレクションの存在確認<br>4. **`embed_query(query)` で Dense ベクトル（768D）を生成** ← Embedding 生成のコアステップ<br>5. `use_hybrid_search=True` の場合、**`embed_sparse_query_unified(query)` でスパースベクトルを生成**<br>6. `search_collection(client, collection_name, query_vector, sparse_vector, limit=20)` で候補を広く取得<br>7. スパースベクトルエラー時は Dense のみで再試行<br>8. `rerank_results(query, candidates, top_k, threshold=0.2)` で再評価<br>9. メトリクス記録 |
 | **Output** | `Union[List[Dict[str, Any]], str]`: 成功時は検索結果リスト、失敗時はエラー文字列 |
 
 **戻り値例（成功時）**:
@@ -488,7 +506,7 @@ def search_rag_knowledge_base_structured(
 
 #### 関数: `embed_query`
 
-**概要**: Gemini Embedding API を呼び出し、テキストクエリを Dense ベクトル（3072次元浮動小数点配列）に変換する。これがベクトル検索の核となるベクトル表現である。
+**概要**: Ollama Embedding（`nomic-embed-text`）を呼び出し、テキストクエリを Dense ベクトル（768次元浮動小数点配列）に変換する。これがベクトル検索の核となるベクトル表現である。ローカル実行のため API キーは不要で、コストも発生しない。
 
 ```python
 def embed_query(query: str) -> List[float]
@@ -501,12 +519,12 @@ def embed_query(query: str) -> List[float]
 | 項目 | 内容 |
 |------|------|
 | **Input** | `query: str` |
-| **Process** | 1. Gemini Embedding API にテキストを送信<br>2. モデル（`gemini-embedding-001`）で 3072次元の Dense ベクトルを生成<br>3. ベクトルを `List[float]` として返却 |
-| **Output** | `List[float]`: 3072次元の Dense ベクトル。失敗時は `None` |
+| **Process** | 1. Ollama Embedding（ローカル）にテキストを送信<br>2. モデル（`nomic-embed-text`）で 768次元の Dense ベクトルを生成<br>3. ベクトルを `List[float]` として返却 |
+| **Output** | `List[float]`: 768次元の Dense ベクトル。失敗時は `None` |
 
 > 📝 **注意**: `embed_query` は `qdrant_client_wrapper.py` に実装されています。このモジュールのソースコードは本ドキュメント作成時に提供されていないため、内部実装の詳細は推定です。実装確認が必要です。
 
-> ⚠️ **次元数に関する注意（2026-02-09追記）**: 現在の `config.py` では `GeminiConfig.EMBEDDING_DIMS = 3072`、`QdrantConfig.DEFAULT_VECTOR_SIZE = 3072` に設定されています。ただし、`COLLECTION_EMBEDDINGS` に登録された旧コレクションは OpenAI Embedding（1536次元）で作成されたものが含まれます。現在の `embed_query()` は常に `provider="gemini"`（3072次元）を使用するため、OpenAI用コレクションに対して検索すると次元不一致エラーが発生するリスクがあります。詳細は改善計画 STEP 11 を参照してください。
+> ⚠️ **次元数に関する注意（2026-06-21追記）**: 現在の `config.py` では `GeminiConfig.EMBEDDING_DIMS = 768`、`QdrantConfig.DEFAULT_VECTOR_SIZE = 768` に設定されています（Ollama / `nomic-embed-text`）。検索対象コレクションは `*_ollama` 命名で 768次元です。`embed_query()` は常に `provider="ollama"`（768次元）を使用します。旧コレクション（別プロバイダー・別次元）が混在する場合、次元不一致エラーが発生するリスクがあるため、コレクション側の次元数を 768 に揃えること。詳細は改善計画 STEP 11 を参照してください。
 
 ---
 
@@ -554,7 +572,7 @@ def search_collection(
 |------------|------|-----------|------|
 | `client` | `QdrantClient` | - | Qdrant クライアントインスタンス |
 | `collection_name` | `str` | - | 検索対象コレクション名 |
-| `query_vector` | `List[float]` | - | Dense ベクトル（3072D） |
+| `query_vector` | `List[float]` | - | Dense ベクトル（768D） |
 | `sparse_vector` | `Any` | `None` | スパースベクトル（None の場合は Dense のみ） |
 | `limit` | `int` | `20` | 取得件数上限 |
 
@@ -606,7 +624,7 @@ def set(self, session_id: str, collection_name: str, score: float, query: str = 
 |-----|-------------|------|
 | `RAG_DEFAULT_COLLECTION` | (設定値) | デフォルト検索コレクション名 |
 | `RAG_SEARCH_LIMIT` | (設定値) | Rerank 後の最終取得件数 |
-| `MODEL_NAME` | (設定値) | デフォルト Gemini モデル名 |
+| `MODEL_NAME` | `gemma4:e4b`（代替 `llama3.2`） | デフォルト Ollama モデル名 |
 
 ### 5.2 CollectionCache 設定
 
@@ -652,9 +670,9 @@ for event in agent.execute_turn(prompt):
 # 3. 内部では以下が順に実行される:
 #    a. KeywordExtractor.extract("レベッカ・クローンについて教えてください")
 #       → ["レベッカ", "クローン"]
-#    b. Gemini LLM が Thought → Action を決定
+#    b. Ollama LLM が Thought → Action を決定
 #    c. search_rag_knowledge_base_cached(query="レベッカ・クローン", session_id="...")
-#    d. embed_query("レベッカ・クローン") → [0.012, -0.034, ...] (3072D)
+#    d. embed_query("レベッカ・クローン") → [0.012, -0.034, ...] (768D)
 #    e. embed_sparse_query_unified("レベッカ・クローン") → sparse vector
 #    f. search_collection(...) → Qdrant検索
 #    g. rerank_results(...) → 再評価
@@ -715,6 +733,7 @@ __all__ = [
 |-----------|------|---------|
 | 1.0 | 2026-02-09 | 初版作成: ユーザークエリ入力〜Embedding 処理の詳細設計 |
 | 1.1 | 2026-02-09 | 改善Phase1: Dense ベクトル次元数を768→3072に修正（全12箇所）、Embeddingモデル名を `gemini-embedding-001` に修正、OpenAIコレクション混在リスクの注意書き追加 |
+| 1.2 | 2026-06-21 | Ollama ネイティブ化の表記統一・Mermaid §7 スタイル整備（LLM=Ollama/`gemma4:e4b`、Embedding=`nomic-embed-text` 768次元、APIキー不要・コスト発生なし、コレクション `*_ollama`） |
 
 ---
 
@@ -729,9 +748,9 @@ flowchart LR
     CACHE["agent_cache.py"]
     PARALLEL["agent_parallel_search.py"]
 
-    subgraph EXTERNAL["外部API"]
-        GEMINI_CHAT["Gemini Chat API"]
-        GEMINI_EMB["Gemini Embedding API"]
+    subgraph EXTERNAL["外部サービス"]
+        GEMINI_CHAT["Ollama Chat API"]
+        GEMINI_EMB["Ollama Embedding"]
         QDRANT["Qdrant Vector DB"]
         COHERE["Cohere Rerank API"]
     end
@@ -751,6 +770,11 @@ flowchart LR
     WRAPPER --> GEMINI_EMB
     WRAPPER --> QDRANT
     PARALLEL --> TOOLS
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class GRACE,AGENT_SVC,TOOLS,WRAPPER,CACHE,PARALLEL,GEMINI_CHAT,GEMINI_EMB,QDRANT,COHERE,MECAB default
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+style OPTIONAL fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ---
@@ -764,7 +788,7 @@ flowchart LR
 | 1 | `qdrant_client_wrapper.py` のソースコード | `embed_query()`, `embed_sparse_query_unified()`, `search_collection()` の内部実装詳細 | ソースコード提供 |
 | 2 | `services/agent_service.py`（GRACE版 ReActAgent）のソースコード | `execute_turn()` のイベントジェネレータ実装詳細、ツール呼び出しの具体的フロー | ソースコード提供 |
 | 3 | `config.py` のソースコード | `AgentConfig.RAG_DEFAULT_COLLECTION`, `RAG_SEARCH_LIMIT` 等の具体的なデフォルト値 | ソースコード提供 |
-| 4 | Gemini Embedding モデル名 | `text-embedding-004` か別のモデルか | `qdrant_client_wrapper.py` 確認 |
+| 4 | Ollama Embedding モデル名 | `nomic-embed-text`（768次元）で確定。他モデル利用時は次元数を要確認 | `qdrant_client_wrapper.py` 確認 |
 | 5 | スパースベクトルの具体的な実装方式 | TF-IDF / BM25 / fastembed 等のどれを使用しているか | `qdrant_client_wrapper.py` 確認 |
 | 6 | `regex_mecab.py`（KeywordExtractor）のソースコード | キーワード抽出のアルゴリズム詳細 | ソースコード提供 |
 | 7 | GRACE版 `ReActAgent` と `agent_main.py` の `UpgradedCLIAgent` の差異 | イベントジェネレータ vs 同期戻り値の違い、ツールマップの違い | `services/agent_service.py` 確認 |

@@ -1,6 +1,6 @@
 # agent_chat_page.py - ハイブリッド・ナレッジ・エージェント チャット画面 ドキュメント
 
-**Version 1.1** | 最終更新: 2025-01-29
+**Version 1.2** | 最終更新: 2026-06-21
 
 ---
 
@@ -23,7 +23,7 @@
 
 ## 概要
 
-`agent_chat_page.py`は、Gemini API を使用した ReAct 型エージェントとの対話インターフェースを提供する Streamlit ページです。Qdrant 上のナレッジベース（コレクション）を動的に選択し、RAG（Retrieval-Augmented Generation）検索を行いながらユーザーの質問に回答します。
+`agent_chat_page.py`は、Ollama（ローカルLLM）を使用した ReAct 型エージェントとの対話インターフェースを提供する Streamlit ページです。Qdrant 上のナレッジベース（コレクション）を動的に選択し、RAG（Retrieval-Augmented Generation）検索を行いながらユーザーの質問に回答します。
 
 ### 主な責務
 
@@ -69,7 +69,7 @@ flowchart LR
 
         subgraph MAIN["📄 メインエリア"]
             direction TB
-            M1["🤖 エージェント対話<br/>Gemini 3.0 Flash + ReAct + Qdrant"]
+            M1["🤖 エージェント対話<br/>Ollama (ローカルLLM) + ReAct + Qdrant"]
             M2["📊 コレクションデータの表示<br/>expander"]
             M3["💬 チャット履歴エリア<br/>user/assistant messages"]
             M4["🤔 エージェントの思考プロセス<br/>expander - Thought/Tool/Result"]
@@ -78,6 +78,12 @@ flowchart LR
             M1 --> M2 --> M3 --> M4 --> M5 --> M6
         end
     end
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class S1,S2,S3,S4,S5,S6,S7,M1,M2,M3,M4,M5,M6 default
+style BROWSER fill:#1a1a1a,stroke:#fff,color:#fff
+style SIDEBAR fill:#1a1a1a,stroke:#fff,color:#fff
+style MAIN fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 1.2 コンポーネント配置図
@@ -87,7 +93,7 @@ flowchart TB
     subgraph PAGE["agent_chat_page.py"]
         subgraph MAIN_AREA["メインエリア"]
             TITLE["st.title<br/>🤖 エージェント対話"]
-            CAPTION["st.caption<br/>Gemini 3.0 Flash + ReAct + ..."]
+            CAPTION["st.caption<br/>Ollama (ローカルLLM) + ReAct + ..."]
 
             subgraph EXP_DATA["expander: コレクションデータの表示"]
                 ED1["st.markdown - 説明文"]
@@ -125,6 +131,15 @@ flowchart TB
 
     TITLE --> CAPTION --> EXP_DATA --> CHAT_AREA --> RESPONSE --> INPUT
     SH --> SS --> SM --> SC --> SB1 --> SB2 --> SE --> METRICS
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class TITLE,CAPTION,ED1,ED2,ED3,ED4,ED5,CA1,CA2,R1,R2,R3,INPUT,SH,SS,SM,SC,SB1,SB2,SE,METRICS default
+style PAGE fill:#1a1a1a,stroke:#fff,color:#fff
+style MAIN_AREA fill:#1a1a1a,stroke:#fff,color:#fff
+style EXP_DATA fill:#1a1a1a,stroke:#fff,color:#fff
+style CHAT_AREA fill:#1a1a1a,stroke:#fff,color:#fff
+style RESPONSE fill:#1a1a1a,stroke:#fff,color:#fff
+style SIDEBAR_AREA fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ---
@@ -136,7 +151,7 @@ flowchart TB
 | コンポーネント | 種類 | キー | デフォルト値 | 説明 |
 |---------------|------|------|-------------|------|
 | エージェント設定ヘッダー | `st.header` | - | - | セクションヘッダー |
-| モデル選択 | `st.selectbox` | - | `AgentConfig.MODEL_NAME` (`gemini-2.5-flash`) | 使用するLLMモデル |
+| モデル選択 | `st.selectbox` | - | `AgentConfig.MODEL_NAME` (`gemma4:e4b`) | 使用するローカルLLMモデル |
 | コレクション選択 | `st.multiselect` | - | 全コレクション | 検索対象コレクション（複数選択可） |
 | ハイブリッド検索 | `st.checkbox` | - | `True` | Sparse+Dense検索の有効化 |
 | 会話履歴クリア | `st.button` | - | - | 会話履歴とエージェント状態のクリア |
@@ -154,16 +169,16 @@ selected_model = st.selectbox(
 )
 ```
 
-**オプション一覧** (`GeminiConfig.AVAILABLE_MODELS`):
+**オプション一覧** (`GeminiConfig.AVAILABLE_MODELS`、Ollama ローカルLLM):
 
 | モデル名 | 説明 |
 |---------|------|
-| `gemini-2.5-flash` | デフォルト・高速推論モデル |
-| `gemini-3-pro-preview` | 最新Pro（思考モード対応） |
-| `gemini-3-pro-image-preview` | 画像対応Pro |
-| `gemini-2.5-flash-preview` | プレビュー版Flash |
-| `gemini-2.5-pro-preview` | プレビュー版Pro |
-| `gemini-2.0-flash` | 安定版Flash |
+| `gemma4:e4b` | デフォルト・推奨（Google Gemma 4 4B / ローカル） |
+| `gemma4:26b-a4b-it-q4_K_M` | Gemma 4 26B 量子化版（高性能） |
+| `llama3.2` | ローカル・高速 |
+| `llama3.2:3b` | 軽量版 |
+| `llama3.1` | 大容量 |
+| `gemma2` | Google製軽量 |
 
 #### コレクション選択の詳細
 
@@ -191,7 +206,7 @@ selected_collections = st.multiselect(
 | コンポーネント | 種類 | 説明 |
 |---------------|------|------|
 | タイトル | `st.title` | "🤖 エージェント対話 (Agent Chat)" |
-| キャプション | `st.caption` | "Gemini 3.0 Flash + ReAct + Qdrant Hybrid RAG (Dense + Sparse)" |
+| キャプション | `st.caption` | "Ollama (ローカルLLM) + ReAct + Qdrant Hybrid RAG (Dense + Sparse)" |
 | コレクションデータ表示 | `st.expander` | Q/Aデータプレビュー（折りたたみ） |
 | チャット履歴 | `st.chat_message` | ユーザー/アシスタントメッセージの表示 |
 | 思考プロセス | `st.expander` | エージェント推論のリアルタイム表示 |
@@ -308,6 +323,15 @@ flowchart TB
     R1 --> R2 --> R3 --> R4 --> R5 --> R6
     RESET --> START
     CH3 -->|継続| CHAT
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class START,L1,L2,L3,C1,C2,C3,FLAG,I1,I2,I3,I4,CH1,CH2,E1,E2,E3,E4,CH3,R1,R2,R3,R4,R5,R6 default
+style LOAD fill:#1a1a1a,stroke:#fff,color:#fff
+style CHECK fill:#1a1a1a,stroke:#fff,color:#fff
+style INIT fill:#1a1a1a,stroke:#fff,color:#fff
+style CHAT fill:#1a1a1a,stroke:#fff,color:#fff
+style EVENTS fill:#1a1a1a,stroke:#fff,color:#fff
+style RESET fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 3.3 初期化・リセット条件
@@ -333,7 +357,7 @@ flowchart TB
 
     STEP1["1. ページアクセス<br/>→ 初期状態で画面表示<br/>→ エージェント自動初期化"]
 
-    STEP2["2. オプション サイドバーで設定変更<br/>├─ モデル選択 gemini-2.5-flash等<br/>├─ コレクション選択 複数可<br/>└─ ハイブリッド検索ON/OFF<br/>→ 変更時はエージェント自動再初期化"]
+    STEP2["2. オプション サイドバーで設定変更<br/>├─ モデル選択 gemma4:e4b等<br/>├─ コレクション選択 複数可<br/>└─ ハイブリッド検索ON/OFF<br/>→ 変更時はエージェント自動再初期化"]
 
     STEP3["3. オプション コレクションデータ確認<br/>→ エキスパンダーを開く<br/>→ コレクション選択<br/>→ Q/Aデータ100件をプレビュー"]
 
@@ -350,11 +374,20 @@ flowchart TB
     START --> STEP1 --> STEP2 --> STEP3 --> STEP4 --> STEP5 --> STEP6 --> DECISION
     DECISION -->|Yes| STEP4
     DECISION -->|No| END_OR_CLEAR
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class START,STEP1,STEP2,STEP3,STEP4,STEP5,STEP6,DECISION,END_OR_CLEAR default
 ```
 
 ### 4.2 操作シーケンス図
 
 ```mermaid
+%%{ init: { "theme": "base", "themeVariables": {
+  "background": "#000000", "mainBkg": "#000000",
+  "textColor": "#ffffff", "lineColor": "#ffffff",
+  "actorBkg": "#000000", "actorTextColor": "#ffffff",
+  "actorLineColor": "#ffffff", "noteBkg": "#1a1a1a",
+  "noteTextColor": "#ffffff" } } }%%
 sequenceDiagram
     participant User as User
     participant UI as UI
@@ -427,7 +460,7 @@ def show_agent_chat_page() -> None
 ```python
 def show_agent_chat_page():
     st.title("🤖 エージェント対話 (Agent Chat)")
-    st.caption("Gemini 3.0 Flash + ReAct + Qdrant Hybrid RAG (Dense + Sparse)")
+    st.caption("Ollama (ローカルLLM) + ReAct + Qdrant Hybrid RAG (Dense + Sparse)")
 
     # 1. コレクションデータの表示エリア
     with st.expander("📊 コレクションデータの表示", expanded=False):
@@ -507,7 +540,7 @@ def get_available_collections_from_qdrant_helper() -> List[str]
 
 ### 6.3 `ReActAgent` クラス
 
-**概要**: ReAct（Reasoning + Acting）パターンを実装したエージェントクラス。Gemini APIとQdrant RAGを統合。
+**概要**: ReAct（Reasoning + Acting）パターンを実装したエージェントクラス。Ollama（ローカルLLM）とQdrant RAGを統合。
 
 **参照**: `services/agent_service.py`
 
@@ -526,7 +559,7 @@ def __init__(
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
 | `selected_collections` | `List[str]` | - | 検索対象コレクションのリスト |
-| `model_name` | `str` | `gemini-2.5-flash` | 使用するGeminiモデル名 |
+| `model_name` | `str` | `gemma4:e4b` | 使用するOllama（ローカルLLM）モデル名 |
 | `session_id` | `Optional[str]` | `uuid.uuid4()` | セッション識別子（キャッシュ用） |
 | `use_hybrid_search` | `bool` | `True` | ハイブリッド検索（Sparse+Dense）の有効化 |
 
@@ -538,8 +571,8 @@ def __init__(
 | `model_name` | `str` | 使用モデル名 |
 | `session_id` | `str` | セッションID |
 | `use_hybrid_search` | `bool` | ハイブリッド検索フラグ |
-| `client` | `genai.Client` | Google GenAI クライアント |
-| `chat` | `Chat` | チャットセッション |
+| `llm` | `create_llm_client("ollama")` | Ollama（ローカルLLM）クライアント |
+| `messages` | `List[Dict]` | チャット履歴（OpenAI 互換 messages を自前管理） |
 | `thought_log` | `List[str]` | 思考プロセスログ |
 | `keyword_extractor` | `KeywordExtractor` | キーワード抽出器（オプション） |
 
@@ -683,14 +716,14 @@ class CollectionCacheEntry:
 | `streamlit` | 1.52.1 | UIフレームワーク |
 | `pandas` | 2.3.3 | データフレーム表示 |
 | `qdrant-client` | 1.16.1 | Qdrant接続 |
-| `google-genai` | 1.52.0 | Gemini API SDK |
+| `ollama` | - | Ollama（ローカルLLM）クライアント（`create_llm_client("ollama")` 経由・OpenAI 互換） |
 
 ### 7.2 内部モジュール
 
 | モジュール | 用途 |
 |-----------|------|
 | `config.AgentConfig` | エージェント設定（MODEL_NAME, RAG_SEARCH_LIMIT等） |
-| `config.GeminiConfig` | Geminiモデル設定（AVAILABLE_MODELS, DEFAULT_MODEL等） |
+| `config.GeminiConfig` | Ollama モデル設定クラス（クラス名は後方互換のため `GeminiConfig` のまま・値は Ollama。AVAILABLE_MODELS, DEFAULT_MODEL等） |
 
 ### 7.3 サービス層
 
@@ -704,11 +737,14 @@ class CollectionCacheEntry:
 
 | 設定クラス | 設定項目 | 値 | 説明 |
 |-----------|---------|-----|------|
-| `GeminiConfig` | `AVAILABLE_MODELS` | `["gemini-2.5-flash", ...]` | 利用可能モデル一覧 |
-| `GeminiConfig` | `DEFAULT_MODEL` | `"gemini-2.5-flash"` | デフォルトモデル |
+| `GeminiConfig` | `AVAILABLE_MODELS` | `["gemma4:e4b", "llama3.2", ...]` | 利用可能モデル一覧（Ollama） |
+| `GeminiConfig` | `DEFAULT_MODEL` | `"gemma4:e4b"` | デフォルトモデル（Ollama） |
 | `AgentConfig` | `MODEL_NAME` | `GeminiConfig.DEFAULT_MODEL` | エージェント使用モデル |
 | `AgentConfig` | `RAG_SEARCH_LIMIT` | `3` | 検索結果取得件数 |
 | `AgentConfig` | `RAG_SCORE_THRESHOLD` | `0.50` | 検索スコア閾値 |
+| `GeminiConfig` | `EMBEDDING_MODEL` | `"nomic-embed-text"`（768次元） | Ollama Embedding モデル |
+
+> **注**: Ollama はローカル実行のため **APIキーは不要**（任意で `OLLAMA_BASE_URL` を設定）。ローカル実行のため **API コストは発生しない**（トークン集計のみ）。Embedding は `nomic-embed-text`（768次元）。Qdrant コレクションは `*_ollama` 命名を用いる。Tool Use は Ollama の **OpenAI 互換**形式（`finish_reason == "tool_calls"` + `tool_calls` リスト）で実装される。
 
 ### 7.5 依存関係図
 
@@ -720,7 +756,7 @@ flowchart LR
         ST[streamlit]
         PD[pandas]
         QC[qdrant-client]
-        GG[google-genai]
+        GG[ollama]
     end
 
     subgraph INTERNAL["内部モジュール"]
@@ -742,6 +778,11 @@ flowchart LR
     AGENT_SVC --> CONFIG
     AGENT_SVC --> AGENT_TOOLS
     AGENT_SVC --> AGENT_CACHE
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class PAGE,ST,PD,QC,GG,CONFIG,AGENT_SVC,AGENT_CACHE,AGENT_TOOLS default
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+style INTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ---
@@ -799,6 +840,10 @@ flowchart TB
     E1 -->|tool_call| TOOL_CALL --> E1
     E1 -->|tool_result| TOOL_RESULT --> E1
     E1 -->|final_answer| FINAL --> HISTORY
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class INPUT,E1,LOG,TOOL_CALL,TOOL_RESULT,FINAL,HISTORY default
+style EVENTS fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ---
@@ -810,8 +855,8 @@ flowchart TB
 | エラー種別 | 発生条件 | 対処 |
 |-----------|---------|------|
 | Qdrant接続エラー | サーバー未起動/URL誤り | `st.warning`で警告表示、コレクションリストを`["(None)"]`に設定 |
-| エージェント初期化エラー | API認証失敗/ネットワークエラー | `st.error`でエラー表示、処理中断（`return`） |
-| チャット処理エラー | API呼び出し失敗/タイムアウト | `st.error`でエラー表示、`logger.error`でログ出力 |
+| エージェント初期化エラー | Ollama 未起動/接続失敗（APIキーは不要・ローカル実行） | `st.error`でエラー表示、処理中断（`return`） |
+| チャット処理エラー | Ollama 呼び出し失敗/タイムアウト | `st.error`でエラー表示、`logger.error`でログ出力 |
 | データ取得エラー | コレクションデータ取得失敗 | `st.error`でエラー表示 |
 | コレクション取得エラー | Qdrant接続エラー | 空リストで続行、`st.warning`で警告表示 |
 | RAGToolError | RAG検索ツール実行失敗 | ツール結果として「エラーが発生しました: {e}」を返却 |
@@ -859,7 +904,7 @@ except Exception as e:
 
 1. ページにアクセス（サイドメニューから「エージェント対話」を選択）
 2. サイドバーで必要に応じて設定を変更
-   - 使用モデルの選択（デフォルト: `gemini-2.5-flash`）
+   - 使用モデルの選択（デフォルト: `gemma4:e4b`、代替 `llama3.2`）
    - 検索対象コレクションの選択（デフォルト: 全コレクション）
    - ハイブリッド検索の有効/無効（デフォルト: 有効）
 3. （オプション）「📊 コレクションデータの表示」を開いてデータを確認
@@ -903,6 +948,7 @@ except Exception as e:
 |-----------|------|---------|
 | 1.0 | 2025-01-29 | 初版作成 |
 | 1.1 | 2025-01-29 | ASCII図をMermaid v9フローチャートに変更（PyCharm Pro対応） |
+| 1.2 | 2026-06-21 | Ollama ネイティブ化の表記統一・Mermaid §7 スタイル整備 |
 
 ---
 
@@ -910,7 +956,7 @@ except Exception as e:
 
 | モジュール | ファイルパス | 説明 |
 |-----------|-------------|------|
-| `config.py` | `config.py` | 設定・定数の一元管理（GeminiConfig, AgentConfig） |
+| `config.py` | `config.py` | 設定・定数の一元管理（GeminiConfig=Ollama設定, AgentConfig） |
 | `agent_service.py` | `services/agent_service.py` | ReActAgent、ヘルパー関数 |
 | `agent_cache.py` | `agent_cache.py` | コレクションキャッシュマネージャー（CollectionCache） |
 | `agent_tools.py` | `agent_tools.py` | RAG検索ツール（search_rag_knowledge_base） |

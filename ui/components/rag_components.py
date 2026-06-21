@@ -19,7 +19,6 @@ from helper.helper_llm import (
     get_available_llm_models,
     get_embedding_model_pricing,
     get_llm_model_limits,
-    get_llm_model_pricing,
 )
 from helper.helper_rag import RAGConfig, TokenManager
 
@@ -53,7 +52,6 @@ def show_model_info(selected_model: str) -> None:
     """選択されたモデルの情報を表示"""
     try:
         limits = get_llm_model_limits(selected_model)
-        pricing = get_llm_model_pricing(selected_model)
 
         with st.sidebar.expander("📊 選択モデル情報", expanded=False):
             # 基本情報
@@ -65,32 +63,30 @@ def show_model_info(selected_model: str) -> None:
                 st.write("**最大出力**")
                 st.write(f"{limits.get('max_output', 0):,}")
 
-            # 料金情報
+            # 料金情報（Ollama はローカル実行のため API コストなし）
             st.write("**料金（1000トークン）**")
-            st.write(f"- 入力: ${pricing.get('input', 0.0):.5f}")
-            st.write(f"- 出力: ${pricing.get('output', 0.0):.5f}")
+            st.caption("ローカル実行のため API コストは発生しません（トークン集計のみ）")
 
-            # モデル特性（Geminiに特化）
-            if "gemini-2.0" in selected_model:
-                st.info("✨ Gemini 2.0 シリーズ")
-                st.caption("高速・高性能な次世代モデル")
-            elif "gemini-1.5" in selected_model:
-                st.info("💡 Gemini 1.5 シリーズ")
-                st.caption("長文コンテキスト・マルチモーダル対応")
-            elif "gpt" in selected_model:
-                st.info("⚙️ OpenAI互換モデル")
-                st.caption("OpenAI APIを介して利用可能")
+            # モデル特性（Ollama ローカルLLM）
+            if "gemma" in selected_model:
+                st.info("✨ Gemma シリーズ（Google 製・ローカル）")
+                st.caption("軽量・高速なローカルLLM")
+            elif "llama" in selected_model:
+                st.info("💡 Llama シリーズ（ローカル）")
+                st.caption("汎用・高速なローカルLLM")
+            elif "qwen" in selected_model:
+                st.info("🌐 Qwen シリーズ（多言語対応・ローカル）")
+            elif "mistral" in selected_model:
+                st.info("⚙️ Mistral（汎用・ローカル）")
             else:
-                st.info("💬 その他のLLMモデル")
+                st.info("💬 その他の Ollama モデル")
 
             # RAG用途での推奨度
             st.write("**RAG用途推奨度**")
-            if "flash" in selected_model:
-                st.success("✅ 最適（高速・コスト効率良好）")
-            elif "pro" in selected_model:
-                st.info("💡 高品質（詳細な推論に最適）")
-            elif "gpt" in selected_model:
-                st.info("💬 OpenAI互換（用途に応じて選択）")
+            if "gemma4" in selected_model:
+                st.success("✅ 最適（既定推奨・高速）")
+            elif "llama" in selected_model or "qwen" in selected_model:
+                st.info("💡 良好（用途に応じて選択）")
             else:
                 st.info("💬 標準的な性能")
 
@@ -118,8 +114,8 @@ def estimate_token_usage(df_processed: pd.DataFrame, selected_model: str) -> Non
                     # 全体のトークン数を推定
                     estimated_total_tokens = int((total_chars / sample_chars) * sample_tokens)
 
-                    # Embeddingモデルの料金を取得 (Gemini Embeddingを想定)
-                    embedding_model_name = get_available_embedding_models()[0] # デフォルトのGemini Embeddingモデルを取得
+                    # Embeddingモデルの料金を取得 (Ollama Embedding / nomic-embed-text を想定)
+                    embedding_model_name = get_available_embedding_models()[0] # デフォルトの Ollama Embedding モデルを取得
                     embedding_pricing_per_1k_tokens = get_embedding_model_pricing(embedding_model_name)
 
                     with st.expander("🔢 トークン使用量推定", expanded=False):
@@ -208,13 +204,13 @@ def show_usage_instructions(dataset_type: str) -> None:
 
     ### 🎯 RAG最適化の特徴
     - **自然な文章結合**: ラベルなしで読みやすい文章として結合
-    - **Gemini Embedding対応**: `gemini-embedding-001`等に最適化
+    - **Ollama Embedding対応**: `nomic-embed-text`（768次元）に最適化
     - **検索性能向上**: 意味的検索の精度向上
 
-    ### 💡 推奨モデル
-    - **コスト重視**: `gemini-2.0-flash`
-    - **品質重視**: `gemini-2.0-pro`
-    - **OpenAI互換**: `gpt-4o-mini`, `gpt-4o` （OpenAI APIキーが必要）
+    ### 💡 推奨モデル（Ollama・ローカル実行）
+    - **既定推奨**: `gemma4:e4b`
+    - **高速・汎用**: `llama3.2`
+    - **多言語対応**: `qwen2.5:7b`
     """
 
     # データセット特有の説明
