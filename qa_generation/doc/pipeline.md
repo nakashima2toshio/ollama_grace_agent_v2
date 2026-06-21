@@ -105,7 +105,7 @@ QAPipeline
 │   └── check_celery_workers()         # ワーカー確認
 │
 ├── helper.helper_llm
-    └── LLMClient                    # LLM操作
+    └── LLMClient                    # LLM操作（create_llm_client("ollama")）
 
 ```
 
@@ -124,7 +124,7 @@ QAPipeline
 ├──────────────────────────────────────────┤
 │  Infrastructure Layer                    │
 │  ├─ Celery (並列処理)                     │
-│  ├─ LLMClient (Gemini API)               │
+│  ├─ LLMClient (Ollama / ローカルLLM)      │
 │  └─ SemanticCoverage (埋め込み生成)        │
 └──────────────────────────────────────────┘
 ```
@@ -164,7 +164,7 @@ QAPipeline
 def __init__(self,
              dataset_name: Optional[str] = None,
              input_file: Optional[str] = None,
-             model: str = "gemini-2.0-flash",
+             model: str = "gemma4:e4b",
              output_dir: str = "qa_output/pipeline",
              max_docs: Optional[int] = None,
              client: Optional[LLMClient] = None)
@@ -174,7 +174,7 @@ def __init__(self,
 |----------|---|----------|------|
 | `dataset_name` | Optional[str] | None | 事前定義データセット名 |
 | `input_file` | Optional[str] | None | チャンク済みCSVファイルパス |
-| `model` | str | "gemini-2.0-flash" | 使用モデル |
+| `model` | str | "gemma4:e4b" | 使用モデル（Ollama、代替: `llama3.2`） |
 | `output_dir` | str | "qa_output/pipeline" | 出力ディレクトリ |
 | `max_docs` | Optional[int] | None | 最大処理チャンク数 |
 | `client` | Optional[LLMClient] | None | LLMクライアント（DI用） |
@@ -337,7 +337,7 @@ from qa_generation.pipeline import QAPipeline
 # チャンク済みCSVからQ/A生成
 pipeline = QAPipeline(
     input_file="output_chunked/data_chunks.csv",
-    model="gemini-2.0-flash",
+    model="gemma4:e4b",
     output_dir="qa_output/pipeline"
 )
 
@@ -384,7 +384,7 @@ result = pipeline.run(
 |----------|:---:|---|----------|------|
 | `dataset_name` | △ | str | None | データセット名 |
 | `input_file` | △ | str | None | 入力CSVパス |
-| `model` | - | str | "gemini-2.0-flash" | LLMモデル |
+| `model` | - | str | "gemma4:e4b" | LLMモデル（Ollama） |
 | `output_dir` | - | str | "qa_output/pipeline" | 出力先 |
 | `max_docs` | - | int | None | 最大処理数 |
 | `client` | - | LLMClient | None | カスタムクライアント |
@@ -627,7 +627,7 @@ result = pipeline.run(use_celery=True, celery_workers=24)
 ```python
 from qa_generation.smart_qa_generator import SmartQAGenerator
 
-generator = SmartQAGenerator(model="gemini-2.0-flash")
+generator = SmartQAGenerator(model="gemma4:e4b")
 result = generator.process_chunk(chunk_text)
 
 print(f"分析結果: {result['analysis']}")
@@ -719,6 +719,7 @@ for i in range(min(3, len(df))):
 ---
 
 **作成日**: 2025-01-27
+**最終更新**: 2026-06-21
 **対象ファイル**: `qa_generation/pipeline.py`
 **バージョン**: v3.0（チャンク処理削除版）
 

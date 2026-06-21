@@ -85,7 +85,7 @@ graph TB
     end
 
     subgraph "埋め込み生成"
-        J[チャンク/テキスト] --> K[Gemini API呼び出し]
+        J[チャンク/テキスト] --> K[Ollama Embedding 呼び出し]
         K --> L[L2正規化]
         L --> M[埋め込みベクトル]
     end
@@ -95,6 +95,12 @@ graph TB
         P[ベクトルB] --> O
         O --> Q[類似度スコア]
     end
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q default
+style チャンク分割 fill:#1a1a1a,stroke:#fff,color:#fff
+style 埋め込み生成 fill:#1a1a1a,stroke:#fff,color:#fff
+style 類似度計算 fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ---
@@ -131,8 +137,8 @@ graph TB
 
 | 区分 | 内容 |
 |-----|------|
-| **Input** | `embedding_model`: str（埋め込みモデル名、デフォルト: "gemini-embedding-001"） |
-| **Process** | 1. 埋め込みクライアント初期化（Gemini）<br>2. 埋め込み次元数取得（3072）<br>3. LLMクライアント初期化（トークン計算用）<br>4. tiktokenエンコーダ初期化<br>5. MeCab利用可否チェック |
+| **Input** | `embedding_model`: str（埋め込みモデル名、デフォルト: "nomic-embed-text"） |
+| **Process** | 1. 埋め込みクライアント初期化（`create_embedding_client("ollama")`）<br>2. 埋め込み次元数取得（768）<br>3. LLMクライアント初期化（`create_llm_client("ollama")`、トークン計算用）<br>4. tiktokenエンコーダ初期化<br>5. MeCab利用可否チェック |
 | **Output** | SemanticCoverageインスタンス |
 
 #### プロセスフロー
@@ -140,11 +146,14 @@ graph TB
 ```mermaid
 flowchart TD
     A[embedding_model受信] --> B[embedding_client作成]
-    B --> C[embedding_dims取得: 3072]
+    B --> C["embedding_dims取得: 768"]
     C --> D[unified_client作成]
     D --> E[tiktoken初期化]
     E --> F[MeCab利用可否チェック]
     F --> G[インスタンス完成]
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D,E,F,G default
 ```
 
 ---
@@ -186,6 +195,11 @@ flowchart TD
     L -->|Yes| M[_apply_chunk_overlap]
     L -->|No| N[チャンクリスト返却]
     M --> N
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D,E,F,G,H,I,J,K,L,M,N default
+style 段落ベース分割 fill:#1a1a1a,stroke:#fff,color:#fff
+style 文ベース分割 fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 #### 出力構造
@@ -241,6 +255,9 @@ flowchart TD
     M --> N
     N -->|Yes| C
     N -->|No| O[チャンクリスト返却]
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D,E,F,G,H,I,J,K,L,M,N,O default
 ```
 
 ---
@@ -271,7 +288,12 @@ flowchart TD
     F --> I[句点で分割]
     I --> J[残余テキスト処理]
     J --> H
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D,E,F,G,H,I,J default
 ```
+
+> 注: トークン数計算には `tiktoken`（`cl100k_base`）を使用しており、Ollama への切り替え後もチャンクサイズ見積もりの基準として継続利用している。
 
 #### 日本語判定パターン
 
@@ -289,14 +311,14 @@ is_japanese = bool(re.search(r'[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]', text[
 | 区分 | 内容 |
 |-----|------|
 | **Input** | `doc_chunks`: List[Dict]（チャンクのリスト、各チャンクに'text'キーが必要） |
-| **Process** | 1. APIキー有無チェック<br>2. テキスト抽出<br>3. Gemini Embedding API呼び出し<br>4. L2正規化 |
-| **Output** | `np.ndarray`: 埋め込みベクトル配列 (N × 3072) |
+| **Process** | 1. Ollama サービス利用可否チェック<br>2. テキスト抽出<br>3. Ollama Embedding 呼び出し<br>4. L2正規化 |
+| **Output** | `np.ndarray`: 埋め込みベクトル配列 (N × 768) |
 
 #### プロセスフロー
 
 ```mermaid
 flowchart TD
-    A[doc_chunks受信] --> B{has_api_key?}
+    A[doc_chunks受信] --> B{Ollama利用可能?}
     B -->|No| C[ゼロベクトル返却]
     B -->|Yes| D[テキスト抽出]
     D --> E[embed_texts呼び出し]
@@ -308,6 +330,9 @@ flowchart TD
     J -->|Yes| G
     J -->|No| K[np.array化して返却]
     F -->|No| C
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D,E,F,G,H,I,J,K default
 ```
 
 #### L2正規化の重要性
@@ -331,20 +356,23 @@ cosine_similarity = np.dot(vec_a, vec_b)  # 内積で計算可能
 | 区分 | 内容 |
 |-----|------|
 | **Input** | `texts`: List[str]（テキストのリスト）<br>`batch_size`: int（バッチサイズ、デフォルト100） |
-| **Process** | 1. APIキー有無チェック<br>2. Gemini Embedding API呼び出し（バッチ処理）<br>3. L2正規化 |
-| **Output** | `np.ndarray`: 埋め込みベクトル配列 (N × 3072) |
+| **Process** | 1. Ollama サービス利用可否チェック<br>2. Ollama Embedding 呼び出し（バッチ処理）<br>3. L2正規化 |
+| **Output** | `np.ndarray`: 埋め込みベクトル配列 (N × 768) |
 
 #### プロセスフロー
 
 ```mermaid
 flowchart TD
-    A[texts, batch_size受信] --> B{has_api_key?}
+    A[texts, batch_size受信] --> B{Ollama利用可能?}
     B -->|No| C[ゼロベクトル返却]
     B -->|Yes| D[embed_texts呼び出し]
     D --> E{成功?}
     E -->|Yes| F[各ベクトルを正規化]
     F --> G[np.array化して返却]
     E -->|No| C
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D,E,F,G default
 ```
 
 ---
@@ -369,8 +397,11 @@ flowchart TD
     C --> E[float返却]
     D --> F{ノルムがゼロ?}
     F -->|Yes| G[0.0返却]
-    F -->|No| H[dot / norm_a * norm_b]
+    F -->|No| H["dot / norm_a * norm_b"]
     H --> E
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D,E,F,G,H default
 ```
 
 #### 計算式
@@ -427,6 +458,9 @@ flowchart TD
     I -->|Yes| J["type='merged'"]
     I -->|No| K[タイプ確定]
     J --> K
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D,E,F,G,H,I,J,K default
 ```
 
 ### トークン数の基準
@@ -441,13 +475,18 @@ flowchart TD
 
 ## 埋め込みベクトル生成
 
-### Gemini Embedding仕様
+### Ollama Embedding仕様
 
 | 項目 | 値 |
 |-----|---|
-| モデル | gemini-embedding-001 |
-| 次元数 | 3072 |
+| プロバイダー | Ollama（ローカル実行） |
+| モデル | nomic-embed-text |
+| 次元数 | 768 |
 | 正規化 | L2正規化（自動適用） |
+| APIキー | 不要（ローカル実行）。任意で `OLLAMA_BASE_URL` を設定 |
+| コスト | ローカル実行のため API コストは発生しない（トークン集計のみ） |
+
+> **類似度閾値に関する注意**: `nomic-embed-text` は他の埋め込みモデルと比べて類似度スコアが低めに出る傾向があります。このため `evaluation.py` の `get_optimal_thresholds()` は、モデル名に `nomic` を含む場合に低めの閾値（strict=0.65 / standard=0.55 / lenient=0.45）を、それ以外のモデルにはデフォルト閾値（strict=0.8 / standard=0.7 / lenient=0.6）を返します。
 
 ### 埋め込み生成の最適化
 
@@ -463,7 +502,7 @@ similarity_matrix = np.dot(embeddings, embeddings.T)
 
 ```python
 # APIキーなし or APIエラー時
-return np.zeros((len(texts), 3072))  # ゼロベクトルを返却
+return np.zeros((len(texts), 768))  # ゼロベクトルを返却
 ```
 
 ---
@@ -503,11 +542,11 @@ for chunk in chunks:
 ```python
 # チャンクの埋め込み生成
 embeddings = analyzer.generate_embeddings(chunks)
-print(f"Shape: {embeddings.shape}")  # (N, 3072)
+print(f"Shape: {embeddings.shape}")  # (N, 768)
 
 # 単一テキストの埋め込み
 embedding = analyzer.generate_embedding("質問テキスト")
-print(f"Shape: {embedding.shape}")  # (3072,)
+print(f"Shape: {embedding.shape}")  # (768,)
 
 # バッチ埋め込み
 texts = ["テキスト1", "テキスト2", "テキスト3"]
@@ -559,7 +598,7 @@ chunks = analyzer.create_semantic_chunks(
 
 | パラメータ | 型 | デフォルト | 説明 |
 |----------|---|----------|------|
-| `embedding_model` | str | "gemini-embedding-001" | 使用する埋め込みモデル |
+| `embedding_model` | str | "nomic-embed-text" | 使用する埋め込みモデル（Ollama） |
 
 ### create_semantic_chunksパラメータ
 
@@ -578,7 +617,7 @@ chunks = analyzer.create_semantic_chunks(
 
 | 項目 | 値 | 説明 |
 |-----|---|------|
-| 埋め込み次元数 | 3072 | Gemini Embeddingの出力次元 |
+| 埋め込み次元数 | 768 | Ollama Embedding（nomic-embed-text）の出力次元 |
 | バッチサイズ（デフォルト） | 100 | 埋め込み生成時のデフォルトバッチサイズ |
 | トークナイザー | cl100k_base | tiktoken使用 |
 | マージ上限 | 300 | チャンクマージ時の最大トークン数 |
@@ -672,5 +711,12 @@ embeddings = analyzer.generate_embeddings_batch(
 ---
 
 **作成日**: 2025-01-27
+**最終更新**: 2026-06-21
 **対象ファイル**: `qa_generation/semantic.py`
 **総行数**: 537行
+
+### 変更履歴
+
+| 日付 | 内容 |
+|------|------|
+| 2026-06-21 | Ollama ネイティブ化の表記統一（nomic-embed-text / 768次元 / `create_*_client("ollama")` / APIキー不要）・Mermaid §7 スタイル整備 |

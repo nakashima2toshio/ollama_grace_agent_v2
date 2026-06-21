@@ -27,16 +27,16 @@ def get_optimal_thresholds(dataset_type: str = None, embedding_model: str = None
 
     Args:
         dataset_type: データセットタイプ（後方互換性のため残す、現在は未使用）
-        embedding_model: 埋め込みモデル名。nomic-embed-text は OpenAI より
+        embedding_model: 埋め込みモデル名。Ollama の nomic-embed-text は
                          cosine 類似度が全体的に低めになるため閾値を下げる。
 
     Returns:
         閾値辞書 {strict, standard, lenient}
     '''
     if embedding_model and "nomic" in embedding_model.lower():
-        # nomic-embed-text: OpenAI embeddings より類似度スコアが低い傾向
+        # nomic-embed-text（Ollama）: 類似度スコアが低めに出る傾向
         return {"strict": 0.65, "standard": 0.55, "lenient": 0.45}
-    # OpenAI / Gemini embeddings 向けデフォルト
+    # その他の埋め込みモデル向けデフォルト
     return {"strict": 0.8, "standard": 0.7, "lenient": 0.6}
 
 

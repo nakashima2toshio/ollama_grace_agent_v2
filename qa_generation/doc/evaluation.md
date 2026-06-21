@@ -26,7 +26,7 @@
 |-----|------|------|
 | config.py依存 | あり | **削除** |
 | データセット別閾値 | 個別設定 | **統一デフォルト値** |
-| 閾値設定 | DATASET_CONFIGSから取得 | 固定値（strict:0.8, standard:0.7, lenient:0.6） |
+| 閾値設定 | DATASET_CONFIGSから取得 | 埋め込みモデル別デフォルト値（nomic-embed-text: strict:0.65, standard:0.55, lenient:0.45 / その他: strict:0.8, standard:0.7, lenient:0.6） |
 
 ### 削除された依存
 
@@ -80,7 +80,7 @@ graph TB
         B[Q/Aペアリスト]
     end
 
-    subgraph "analyze_coverage()"
+    subgraph AnalyzeCoverage["analyze_coverage()"]
         C[チャンク埋め込み生成]
         D[Q/A埋め込み生成]
         E[カバレッジ行列計算]
@@ -102,6 +102,12 @@ graph TB
     F --> H
     G --> H
     H --> I
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D,E,F,G,H,I default
+style Input fill:#1a1a1a,stroke:#fff,color:#fff
+style AnalyzeCoverage fill:#1a1a1a,stroke:#fff,color:#fff
+style Output fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ---
@@ -125,21 +131,33 @@ graph TB
 
 | 区分 | 内容 |
 |-----|------|
-| **Input** | `dataset_type`: str（データセットタイプ、現在は未使用） |
-| **Process** | 統一デフォルト値を返す |
+| **Input** | `dataset_type`: str（データセットタイプ、現在は未使用）<br>`embedding_model`: str（埋め込みモデル名。`nomic` を含む場合は低めの閾値を返す） |
+| **Process** | 埋め込みモデルに応じたデフォルト値を返す（nomic-embed-text は類似度が低めに出るため低い閾値） |
 | **Output** | `Dict[str, float]`: {strict, standard, lenient} |
 
 #### プロセスフロー
 
 ```mermaid
 flowchart TD
-    A[dataset_type受信] --> B[統一デフォルト値を返却]
-    B --> C["{ strict: 0.8, standard: 0.7, lenient: 0.6 }"]
+    A[dataset_type, embedding_model受信] --> B{nomic-embed-text?}
+    B -->|Yes| C["{ strict: 0.65, standard: 0.55, lenient: 0.45 }"]
+    B -->|No| D["{ strict: 0.8, standard: 0.7, lenient: 0.6 }"]
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D default
 ```
 
 #### 出力構造
 
 ```python
+# nomic-embed-text（Ollama、デフォルト）
+{
+    "strict": 0.65,   # 厳格な評価
+    "standard": 0.55, # 標準評価
+    "lenient": 0.45   # 緩やかな評価
+}
+
+# その他の埋め込みモデル向け
 {
     "strict": 0.8,    # 厳格な評価
     "standard": 0.7,  # 標準評価
@@ -171,6 +189,9 @@ flowchart TD
     F --> G{次の閾値?}
     G -->|Yes| C
     G -->|No| H[結果返却]
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D,E,F,G,H default
 ```
 
 #### 出力構造
@@ -210,7 +231,7 @@ flowchart TD
 flowchart TD
     A[chunks, coverage_matrix受信] --> B[tiktokenエンコーダ初期化]
 
-    subgraph "長さ別分析"
+    subgraph LengthAnalysis["長さ別分析"]
         B --> C[各チャンクをループ]
         C --> D[トークン数計算]
         D --> E{token_count}
@@ -222,7 +243,7 @@ flowchart TD
         H --> I
     end
 
-    subgraph "位置別分析"
+    subgraph PositionAnalysis["位置別分析"]
         I --> J[各チャンクの位置判定]
         J --> K{position}
         K -->|< 33%| L[beginning]
@@ -233,7 +254,7 @@ flowchart TD
         N --> O
     end
 
-    subgraph "インサイト生成"
+    subgraph InsightGen["インサイト生成"]
         O --> P[カバレッジ率 < 70%?]
         P -->|Yes| Q[インサイト追加]
         P -->|No| R[スキップ]
@@ -241,6 +262,12 @@ flowchart TD
 
     Q --> S[結果返却]
     R --> S
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S default
+style LengthAnalysis fill:#1a1a1a,stroke:#fff,color:#fff
+style PositionAnalysis fill:#1a1a1a,stroke:#fff,color:#fff
+style InsightGen fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 #### 長さカテゴリの基準
@@ -303,7 +330,7 @@ flowchart TD
 
 | 区分 | 内容 |
 |-----|------|
-| **Input** | `chunks`: List[Dict]（チャンクリスト）<br>`qa_pairs`: List[Dict]（Q/Aペアリスト）<br>`dataset_type`: str（データセットタイプ、デフォルト"wikipedia_ja"）<br>`custom_threshold`: Optional[float]（カスタム閾値） |
+| **Input** | `chunks`: List[Dict]（チャンクリスト）<br>`qa_pairs`: List[Dict]（Q/Aペアリスト）<br>`dataset_type`: str（データセットタイプ、デフォルト"wikipedia_ja"）<br>`custom_threshold`: Optional[float]（カスタム閾値）<br>`embedding_model`: str（埋め込みモデル名。閾値自動調整に使用、`nomic-embed-text` 既定） |
 | **Process** | 1. SemanticCoverage初期化<br>2. チャンク埋め込み生成<br>3. Q/A埋め込み生成（バッチ）<br>4. カバレッジ行列計算<br>5. 基本カバレッジ計算<br>6. 多段階カバレージ分析<br>7. チャンク特性別分析<br>8. 結果統合・ログ出力 |
 | **Output** | `Dict`: 総合カバレッジ分析結果 |
 
@@ -336,21 +363,27 @@ flowchart TD
     R --> S[結果統合]
     S --> T[ログ出力]
     T --> U[結果返却]
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U default
 ```
 
 #### カバレッジ行列計算の詳細
 
 ```mermaid
 flowchart LR
-    A["doc_embeddings<br>(N × 3072)"] --> C["np.dot"]
-    B["qa_embeddings.T<br>(3072 × M)"] --> C
+    A["doc_embeddings<br>(N × 768)"] --> C["np.dot"]
+    B["qa_embeddings.T<br>(768 × M)"] --> C
     C --> D["coverage_matrix<br>(N × M)"]
     D --> E["np.clip<br>[-1.0, 1.0]"]
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D,E default
 ```
 
 - **N**: チャンク数
 - **M**: Q/Aペア数
-- **3072**: Gemini埋め込み次元数
+- **768**: Ollama 埋め込み次元数（`nomic-embed-text`）
 
 #### 出力構造
 
@@ -437,11 +470,13 @@ is_covered = max_similarity >= threshold   # 閾値以上ならカバー
 
 ### 3段階閾値
 
-| レベル | 閾値 | 意味 | 用途 |
-|-------|:----:|------|------|
-| **strict** | 0.8 | 高い類似度を要求 | 厳密な品質評価 |
-| **standard** | 0.7 | 標準的な類似度 | 通常の評価（デフォルト） |
-| **lenient** | 0.6 | 緩やかな類似度 | 最低限のカバー確認 |
+`nomic-embed-text`（Ollama）は類似度スコアが低めに出る傾向があるため、低めの閾値を使用します。その他の埋め込みモデル向けには従来のデフォルト値を使用します。
+
+| レベル | nomic-embed-text 閾値 | その他モデル閾値 | 意味 | 用途 |
+|-------|:----:|:----:|------|------|
+| **strict** | 0.65 | 0.8 | 高い類似度を要求 | 厳密な品質評価 |
+| **standard** | 0.55 | 0.7 | 標準的な類似度 | 通常の評価（デフォルト） |
+| **lenient** | 0.45 | 0.6 | 緩やかな類似度 | 最低限のカバー確認 |
 
 ### 閾値の解釈
 
@@ -713,5 +748,6 @@ for item in sorted_uncovered[:5]:
 ---
 
 **作成日**: 2025-01-27
+**最終更新**: 2026-06-21
 **対象ファイル**: `qa_generation/evaluation.py`
 **バージョン**: v3.0（config.py依存削除版）

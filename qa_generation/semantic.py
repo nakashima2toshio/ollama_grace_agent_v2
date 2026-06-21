@@ -18,16 +18,14 @@ logger = logging.getLogger(__name__)
 
 
 class SemanticCoverage:
-    """意味的な網羅性を測定するクラス（OpenAI Embedding API使用）"""
+    """意味的な網羅性を測定するクラス（Ollama Embedding 使用）"""
 
     def __init__(self,
-                 embedding_model="nomic-embed-text"):  # [MIGRATION openai→ollama] "text-embedding-3-large" → "nomic-embed-text"
+                 embedding_model="nomic-embed-text"):
         self.embedding_model = embedding_model
-        # [MIGRATION openai→ollama] openai → ollama
         self.embedding_client = create_embedding_client(provider="ollama")
         self.embedding_dims = get_embedding_dimensions("ollama")  # 768（nomic-embed-text）
         # トークンカウント用のLLMクライアント
-        # [MIGRATION openai→ollama] provider="openai" → "ollama"
         self.unified_client = create_llm_client(provider="ollama")
         self.tokenizer = tiktoken.get_encoding("cl100k_base")  # 強制分割・デコード用にtiktokenを使用
 
@@ -426,7 +424,7 @@ class SemanticCoverage:
 
     def generate_embeddings(self, doc_chunks: List[Dict]) -> np.ndarray:
         """
-        チャンクのリストから埋め込みベクトルを生成（OpenAI Embedding API使用）
+        チャンクのリストから埋め込みベクトルを生成（Ollama Embedding 使用）
 
         重要ポイント：
         1. バッチ処理で効率化
@@ -442,7 +440,7 @@ class SemanticCoverage:
         texts = [chunk["text"] for chunk in doc_chunks]
 
         try:
-            # Gemini Embedding APIを呼び出し
+            # Ollama Embedding を呼び出し
             embedding_vectors = self.embedding_client.embed_texts(texts, batch_size=100)
 
             # 埋め込みベクトルを正規化
@@ -463,12 +461,12 @@ class SemanticCoverage:
             return np.zeros((len(doc_chunks), self.embedding_dims))
 
     def generate_embedding(self, text: str) -> np.ndarray:
-        """単一テキストの埋め込み生成（OpenAI Embedding API使用）"""
+        """単一テキストの埋め込み生成（Ollama Embedding 使用）"""
         if not self.has_api_key:
             return np.zeros(self.embedding_dims)
 
         try:
-            # Gemini Embedding APIを使用
+            # Ollama Embedding を使用
             embedding = self.embedding_client.embed_text(text)
             embedding = np.array(embedding)
             # 正規化
@@ -482,7 +480,7 @@ class SemanticCoverage:
 
     def generate_embeddings_batch(self, texts: List[str], batch_size: int = 100) -> np.ndarray:
         """
-        複数テキストの埋め込みを一括生成（OpenAI Embedding API使用）
+        複数テキストの埋め込みを一括生成（Ollama Embedding 使用）
 
         Args:
             texts: テキストのリスト
@@ -496,7 +494,7 @@ class SemanticCoverage:
             return np.zeros((len(texts), self.embedding_dims))
 
         try:
-            # Gemini Embedding APIを使用
+            # Ollama Embedding を使用
             embedding_vectors = self.embedding_client.embed_texts(texts, batch_size=batch_size)
 
             # 埋め込みベクトルを正規化
