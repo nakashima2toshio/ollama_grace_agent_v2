@@ -5,11 +5,12 @@ description = "GRACE Agent (Ollama local-LLM edition) v2 — autonomous RAG agen
 requires-python = ">=3.13,<3.14"
 dependencies = [
     # ----------------------------------------------------------------
-    # Core: LLM プロバイダー
+    # Core: LLM クライアント / トークン
+    #   既定は Ollama（ローカルLLM）。Ollama は OpenAI 互換エンドポイント経由で
+    #   利用するため openai SDK をクライアントとして使用する（API キー不要）。
     # ----------------------------------------------------------------
-    "anthropic==0.96.0", # Anthropic Claude API（メインLLM）
-    "openai==1.100.2", # OpenAI API（Embedding: text-embedding-3-large）
-    "tiktoken==0.12.0", # OpenAI トークンカウント
+    "openai==1.100.2", # Ollama（OpenAI 互換 /v1）クライアント。任意で OpenAI も利用可
+    "tiktoken==0.12.0", # トークンカウント（cl100k_base 近似）
     # ----------------------------------------------------------------
     # Core: Webアプリ・UI
     # ----------------------------------------------------------------
@@ -185,6 +186,18 @@ dependencies = [
     "pytest==9.0.3",
     "pytest-asyncio==1.3.0",
     "pywin32==311 ; sys_platform == 'win32'",
+]
+
+# ----------------------------------------------------------------
+# 任意の外部 LLM プロバイダー（既定は Ollama・ローカル実行のため不要）
+#   helper/ のマルチプロバイダー層は anthropic / google-genai を
+#   try/except で任意 import する。これらを使う場合のみ追加インストールする:
+#     uv pip install -e '.[providers]'
+# ----------------------------------------------------------------
+[project.optional-dependencies]
+providers = [
+    "anthropic==0.96.0", # Anthropic Claude を使う場合
+    "google-genai",      # Gemini を使う場合
 ]
 
 [tool.uv]
