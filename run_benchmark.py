@@ -1,7 +1,8 @@
 """GRACE ベンチマーク実行スクリプト（Ollama ローカルLLM）
 
 LLM は Ollama（既定 gemma4:e4b）、Embedding は nomic-embed-text（768次元）、
-Qdrant コレクションは ``*_ollama`` 命名。ローカル実行のため API コストは発生しない。
+Qdrant コレクションは既定で ``cc_news_2per_768``（nomic-embed-text・768次元）固定。
+ローカル実行のため API コストは発生しない。
 
 使用例::
 
@@ -12,7 +13,7 @@ Qdrant コレクションは ``*_ollama`` 命名。ローカル実行のため A
     python run_benchmark.py --fast
 
     # コレクション・試行回数を指定
-    python run_benchmark.py --collection cc_news_2per_ollama --runs 2
+    python run_benchmark.py --collection cc_news_2per_768 --runs 2
 
     # 特定クエリだけ実行
     python run_benchmark.py --query-id Q01 --query-id Q11
@@ -27,8 +28,10 @@ import argparse
 
 from grace.benchmark import BENCHMARK_QUERIES, FAST_QUERY_IDS, BenchmarkRunner
 
-# Ollama ネイティブ運用の既定コレクション（nomic-embed-text / 768次元）
-DEFAULT_COLLECTION = "cc_news_2per_ollama"
+# Ollama ネイティブ運用の既定コレクション（nomic-embed-text / 768次元）。
+# 環境内で 768次元の実体を持つのは cc_news_2per_768 のみ（cc_news_2per_ollama は
+# 次元不一致のため使用しない）。単一コレクション固定で検索する。
+DEFAULT_COLLECTION = "cc_news_2per_768"
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -46,7 +49,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--collection", type=str, default=DEFAULT_COLLECTION,
-        help="検索対象の Qdrant コレクション名（例: cc_news_2per_ollama）",
+        help="検索対象の Qdrant コレクション名（既定: cc_news_2per_768 / 768次元）",
     )
     parser.add_argument(
         "--query-id", action="append", dest="query_ids", default=None,
@@ -62,9 +65,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--restrict-collection", dest="restrict_collection",
-        action=argparse.BooleanOptionalAction, default=None,
-        help="RAG検索を単一コレクションに限定（--collection 指定推奨）。"
-             "未指定かつ --fast なら有効",
+        action=argparse.BooleanOptionalAction, default=True,
+        help="RAG検索を --collection の単一コレクションに限定（既定: 有効）。"
+             "横断検索に戻す場合は --no-restrict-collection",
     )
     parser.add_argument(
         "--mode", choices=["grace", "react", "both"], default="grace",
