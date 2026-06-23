@@ -495,7 +495,7 @@ def run(
 
 ```python
 # 使用例
-runner = BenchmarkRunner(qdrant_collection="cc_news_2per_ollama")
+runner = BenchmarkRunner(qdrant_collection="cc_news_2per_768")
 session = runner.run(
     query_id="Q01", query_text="Amazonの新規職は何件？",
     expected_case="A", expected={"intervention": ["SILENT", "NOTIFY"], "web": False},
@@ -541,7 +541,7 @@ def run_query_set(
 
 ```python
 # 使用例
-runner = BenchmarkRunner(qdrant_collection="cc_news_2per_ollama")
+runner = BenchmarkRunner(qdrant_collection="cc_news_2per_768")
 sessions = runner.run_query_set(fast=True, mode="both")
 print(len(sessions))
 # 10  （代表5クエリ × 2方式 × 1回）
@@ -571,7 +571,7 @@ CSV_HEADERS = [
 
 ### 5.2 BENCHMARK_QUERIES / FAST_QUERY_IDS
 
-標準クエリは Qdrant コレクション `cc_news_2per_ollama`（`nomic-embed-text` / 768次元）の
+標準クエリは Qdrant コレクション `cc_news_2per_768`（`nomic-embed-text` / 768次元）の
 実データに対応し、検索ハンドリングの5ケースを通過するよう設計されています。
 
 | キー | 説明 |
@@ -609,7 +609,7 @@ LLM-as-judge（`LLMJudge`）用の採点メタデータ。`keywords`（期待キ
 from grace.benchmark import BenchmarkRunner
 
 # 1. ランナー生成（コレクションを明示指定）
-runner = BenchmarkRunner(qdrant_collection="cc_news_2per_ollama")
+runner = BenchmarkRunner(qdrant_collection="cc_news_2per_768")
 
 # 2. 高速モードで全ケース A〜E を1本ずつ実行（単一コレクション固定・リプラン最小）
 sessions = runner.run_query_set(fast=True)
@@ -624,7 +624,7 @@ print(f"route_correct: {correct}/{len(scored)}")
 
 ```python
 # GRACE Plan+Executor と ReAct+Reflection を同一クエリで比較
-runner = BenchmarkRunner(qdrant_collection="cc_news_2per_ollama")
+runner = BenchmarkRunner(qdrant_collection="cc_news_2per_768")
 sessions = runner.run_query_set(fast=True, mode="both")
 
 for s in sessions:
