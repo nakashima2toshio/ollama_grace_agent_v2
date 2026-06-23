@@ -132,25 +132,45 @@ class RAGSearchTool(BaseTool):
         if required_keywords:
             logger.info(f"RAGSearchTool: Required keywords for filtering: {required_keywords}")
 
-        # --- 検索対象コレクションの決定（優先順位リスト） ---
-        # 指定があればそれを最初に、なければデフォルト順
-        search_candidates = []
-        if collection:
-            search_candidates.append(collection)
+        # --- 検索対象コレクションの決定 ---
+        # 方針: まず「使えるコレクション」（次元一致・実体あり）を先に取得し、
+        # 検索候補は必ずこの集合に限定する。これにより次元不一致コレクション
+        # （例: wikipedia_ja_5per）への無駄なアクセスと 400 Bad Request を未然に防ぐ。
+        usable = self._get_all_collections_dynamic()
+        usable_set = set(usable)
+
+        search_candidates: List[str] = []
 
         if self.config.qdrant.restrict_to_collection:
-            # 単一コレクション固定モード: 全コレクション横断のフォールバックを行わない。
-            # 明示指定が無い場合は config.qdrant.collection_name を使う。
-            if not search_candidates:
-                search_candidates.append(self.config.qdrant.collection_name)
+            # 単一コレクション固定モード: プラン側が別コレクションを指定しても
+            # それは無視し、設定の collection_name（--collection）だけを使う。
+            target = self.config.qdrant.collection_name
+            search_candidates = [target]
+            if collection and collection != target:
+                logger.info(
+                    f"RAGSearchTool: restrict_to_collection=ON のためステップ指定 "
+                    f"'{collection}' を無視し '{target}' に固定"
+                )
+            if usable_set and target not in usable_set:
+                logger.warning(
+                    f"RAGSearchTool: 固定コレクション '{target}' が使用可能集合に無い"
+                    f"（次元不一致/空/未存在の可能性）: usable={usable}"
+                )
             logger.info(
                 f"RAGSearchTool: restrict_to_collection=ON → 単一検索: {search_candidates}"
             )
         else:
-            # フォールバック用のコレクションを追加（重複排除・動的取得）
-            # Qdrantから全コレクションを取得し、優先順位リストに従ってソート
-            dynamic_collections = self._get_all_collections_dynamic()
-            for c in dynamic_collections:
+            # 横断モード: 明示指定は「使える」場合のみ先頭採用。続いて使える
+            # コレクションを優先順位順に追加（いずれも usable_set に限定）。
+            if collection:
+                if (not usable_set) or (collection in usable_set):
+                    search_candidates.append(collection)
+                else:
+                    logger.info(
+                        f"RAGSearchTool: 指定コレクション '{collection}' は使用不可"
+                        f"（次元不一致/空/未存在）のため検索対象から除外"
+                    )
+            for c in usable:
                 if c not in search_candidates:
                     search_candidates.append(c)
 
