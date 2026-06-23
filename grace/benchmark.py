@@ -23,7 +23,7 @@ Ollama の nomic-embed-text（768次元）、Qdrant コレクションは ``*_ol
     )
 
     # Qdrantコレクションを明示指定して全クエリセットを高速モードで実行
-    runner = BenchmarkRunner(qdrant_collection="cc_news_2per_768")
+    runner = BenchmarkRunner(qdrant_collection="cc_news_2per_ollama")
     sessions = runner.run_query_set(fast=True)
 """
 
@@ -77,7 +77,7 @@ CSV_HEADERS: List[str] = [
 # 標準クエリセット
 # ---------------------------------------------------------------------------
 
-# 標準クエリセットは Qdrant コレクション ``cc_news_2per_768`` の実データ
+# 標準クエリセットは Qdrant コレクション ``cc_news_2per_ollama`` の実データ
 # （海外一般ニュースの日本語Q&A: NFL・Amazon在宅勤務・PC製品・裁判・Google製品・
 # ハリケーン等）に対応させ、GRACE の各処理経路（"path"）を満遍なく
 # 通過するよう設計している。

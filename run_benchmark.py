@@ -1,7 +1,7 @@
 """GRACE ベンチマーク実行スクリプト（Ollama ローカルLLM）
 
 LLM は Ollama（既定 gemma4:e4b）、Embedding は nomic-embed-text（768次元）、
-Qdrant コレクションは既定で ``cc_news_2per_768``（nomic-embed-text・768次元）固定。
+Qdrant コレクションは既定で ``cc_news_2per_ollama``（nomic-embed-text・768次元）固定。
 ローカル実行のため API コストは発生しない。
 
 使用例::
@@ -13,7 +13,7 @@ Qdrant コレクションは既定で ``cc_news_2per_768``（nomic-embed-text・
     python run_benchmark.py --fast
 
     # コレクション・試行回数を指定
-    python run_benchmark.py --collection cc_news_2per_768 --runs 2
+    python run_benchmark.py --collection cc_news_2per_ollama --runs 2
 
     # 特定クエリだけ実行
     python run_benchmark.py --query-id Q01 --query-id Q11
@@ -29,9 +29,10 @@ import argparse
 from grace.benchmark import BENCHMARK_QUERIES, FAST_QUERY_IDS, BenchmarkRunner
 
 # Ollama ネイティブ運用の既定コレクション（nomic-embed-text / 768次元）。
-# 環境内で 768次元の実体を持つのは cc_news_2per_768 のみ（cc_news_2per_ollama は
-# 次元不一致のため使用しない）。単一コレクション固定で検索する。
-DEFAULT_COLLECTION = "cc_news_2per_768"
+# 注意: コレクション名 cc_news_2per_768 は名前に反して実体が 3072次元（旧 gemini/openai
+# 登録物）であり 768次元クエリでは 400 になる。実際に 768次元なのは cc_news_2per_ollama
+# （および cc_news_100_ollama）。単一コレクション固定で検索する。
+DEFAULT_COLLECTION = "cc_news_2per_ollama"
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -49,7 +50,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--collection", type=str, default=DEFAULT_COLLECTION,
-        help="検索対象の Qdrant コレクション名（既定: cc_news_2per_768 / 768次元）",
+        help="検索対象の Qdrant コレクション名（既定: cc_news_2per_ollama / 768次元）",
     )
     parser.add_argument(
         "--query-id", action="append", dest="query_ids", default=None,
