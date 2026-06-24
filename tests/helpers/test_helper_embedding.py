@@ -108,6 +108,46 @@ class TestOllamaEmbedding:
         assert result[1][0] == 0.2
         assert result[2][0] == 0.3
 
+    def test_query_gets_search_query_prefix(self, mock_ollama_client):
+        """nomic では検索クエリに search_query: プレフィックスが付与される"""
+        client, mock_instance = mock_ollama_client
+        mock_response = Mock()
+        mock_response.data = [Mock(embedding=[0.1] * 768)]
+        mock_instance.embeddings.create.return_value = mock_response
+
+        client.embed_text("Amazonの在宅勤務")
+
+        sent = mock_instance.embeddings.create.call_args.kwargs["input"]
+        assert sent == "search_query: Amazonの在宅勤務"
+
+    def test_documents_get_search_document_prefix(self, mock_ollama_client):
+        """nomic では登録文書（バッチ）に search_document: プレフィックスが付与される"""
+        client, mock_instance = mock_ollama_client
+        mock_response = Mock()
+        mock_response.data = [Mock(embedding=[0.1] * 768, index=0),
+                              Mock(embedding=[0.2] * 768, index=1)]
+        mock_instance.embeddings.create.return_value = mock_response
+
+        client.embed_texts(["記事A", "記事B"])
+
+        sent = mock_instance.embeddings.create.call_args.kwargs["input"]
+        assert sent == ["search_document: 記事A", "search_document: 記事B"]
+
+    def test_non_nomic_model_skips_prefix(self):
+        """プレフィックス不要モデル（bge-m3 等）には付与しない"""
+        with patch("helper.helper_embedding.OpenAI") as mock_class:
+            mock_instance = Mock()
+            mock_class.return_value = mock_instance
+            client = OllamaEmbedding(model="bge-m3", dims=1024)
+            mock_response = Mock()
+            mock_response.data = [Mock(embedding=[0.1] * 1024)]
+            mock_instance.embeddings.create.return_value = mock_response
+
+            client.embed_text("Amazonの在宅勤務")
+
+            sent = mock_instance.embeddings.create.call_args.kwargs["input"]
+            assert sent == "Amazonの在宅勤務"  # プレフィックスなし
+
 
 class TestOpenAIEmbedding:
     """OpenAIEmbedding クラスのテスト（後方互換）"""

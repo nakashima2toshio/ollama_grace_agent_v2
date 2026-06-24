@@ -276,7 +276,7 @@ def register_to_qdrant(
     logger.info(f"{'=' * 60}")
     logger.info(f"   全件数       : {len(df)} 件")
     logger.info(f"   バッチサイズ : {batch_size}")
-    logger.info("   Embedding    : Ollama (bge-m3, 1024次元)")
+    logger.info("   Embedding    : Ollama (nomic-embed-text, 768次元)")
     logger.info(f"   Embed並列数  : {embed_workers}（先読みパイプライン）")
     logger.info(f"{'=' * 60}\n")
 
@@ -335,9 +335,9 @@ def register_to_qdrant(
                     point.payload["source"] = normalized_filename
 
                 # Embeddingメタデータ（Ollama固定。embed_texts_for_qdrant が
-                # 常に bge-m3(1024次元) で埋め込むため）
+                # 常に nomic-embed-text(768次元) で埋め込むため）
                 point.payload["embedding_provider"] = "ollama"
-                point.payload["embedding_model"] = "bge-m3"
+                point.payload["embedding_model"] = "nomic-embed-text"
 
             # D. Qdrantへアップサート
             upsert_points_to_qdrant(client, collection_name, points)
@@ -403,7 +403,7 @@ def register_to_qdrant(
     logger.info(f"{'=' * 60}")
     logger.info(f"   コレクション : {collection_name}")
     logger.info(f"   登録件数     : {total_processed:,} 件")
-    logger.info("   Embedding    : Ollama (bge-m3)")
+    logger.info("   Embedding    : Ollama (nomic-embed-text)")
     if create_ui_csv and 'question' in df.columns and 'answer' in df.columns:
         logger.info(f"   UI用CSV      : {os.path.join(ui_output_dir, normalized_filename)}")
     logger.info(f"{'=' * 60}\n")
