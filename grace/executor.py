@@ -1754,6 +1754,18 @@ class Executor:
                     final_answer = result.output
                     break
 
+        # 明確化（ask_user）計画＝最終回答が無く ask_user ステップを含む場合は、
+        # 曖昧クエリ等で確認が必要な状態。高信頼にせず低信頼（CONFIRM/ESCALATE 帯）に
+        # 固定する。これにより曖昧クエリが NOTIFY 等で素通りするのを防ぐ。
+        if final_answer is None and any(
+            getattr(s, "action", None) == "ask_user" for s in state.plan.steps
+        ):
+            clarif = getattr(self.config.confidence, "clarification_confidence", 0.3)
+            logger.info(
+                f"Clarification/ask_user plan (no final answer) → confidence={clarif}"
+            )
+            return round(min(1.0, max(0.0, float(clarif))), 3)
+
         # S1: 最終回答の自己評価/網羅度を保持（groundedness ブレンドで使用）
         self_eval_score: Optional[float] = None
         coverage_score: Optional[float] = None

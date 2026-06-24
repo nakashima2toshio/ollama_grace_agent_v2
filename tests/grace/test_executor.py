@@ -322,6 +322,55 @@ class TestRagRelevanceFallback:
                 "q", "out", rag_max_score=0.72) is True
 
 
+class TestAmbiguityRouting:
+    """曖昧クエリ判定（planner）＋ ask_user 計画の低信頼化（executor）。"""
+
+    def setup_method(self):
+        reset_config()
+
+    def test_is_ambiguous_query_detects_demonstrative(self):
+        from grace.planner import is_ambiguous_query
+        assert is_ambiguous_query("あの件について詳しく教えて") is True
+        assert is_ambiguous_query("それについて教えて") is True
+        assert is_ambiguous_query("") is True
+
+    def test_is_ambiguous_query_passes_concrete_queries(self):
+        from grace.planner import is_ambiguous_query
+        # 固有名詞/数字/カタカナ語を含む実クエリは曖昧扱いしない
+        assert is_ambiguous_query("Amazonが在宅勤務向けに今後募集する新規職は何件ですか？") is False
+        assert is_ambiguous_query(
+            "サンフランシスコ49ersのGMとヘッドコーチの人事異動について説明してください") is False
+        assert is_ambiguous_query(
+            "2025年の暗号資産（ビットコイン）市場の価格動向をまとめてください") is False
+
+    def test_clarification_plan_yields_low_confidence(self):
+        """ask_user のみ（最終回答なし）の計画は低信頼（ESCALATE帯）に固定される。"""
+        executor = Executor(tool_registry=MagicMock(spec=ToolRegistry))
+        plan = ExecutionPlan(
+            original_query="あの件について詳しく教えて",
+            complexity=0.2,
+            estimated_steps=1,
+            requires_confirmation=True,
+            steps=[
+                PlanStep(
+                    step_id=1,
+                    action="ask_user",
+                    description="質問が曖昧なため確認",
+                    expected_output="明確化",
+                )
+            ],
+            success_criteria="確認を求める",
+            plan_id="t-amb",
+        )
+        state = ExecutionState(plan=plan)
+        state.step_results[1] = StepResult(
+            step_id=1, status="success", output="（確認）何の件ですか？", confidence=0.5)
+        conf = executor._calculate_overall_confidence(state)
+        # clarification_confidence(0.3) に固定 → ESCALATE 帯（< 0.4）
+        assert conf == executor.config.confidence.clarification_confidence
+        assert conf < 0.4
+
+
 class TestExecutorFallback:
     """フォールバック機能のテスト"""
 
