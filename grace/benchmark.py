@@ -830,6 +830,9 @@ class BenchmarkRunner:
         self.config     = config or _get_config()
         self.model_name = model_name or getattr(self.config.llm, "model", None) or self.DEFAULT_MODEL
         self.provider   = provider   or self.config.llm.provider
+        # CLI --model 等の上書きを全コンポーネント（Planner/Executor/各評価系）へ反映。
+        # これらは get_config() シングルトンの llm.model を参照するため、ここで一括設定する。
+        self.config.llm.model = self.model_name
         self.bm_logger  = BenchmarkLogger(csv_path=csv_path, config=self.config)
         if qdrant_collection:
             self.config.qdrant.collection_name = qdrant_collection
