@@ -81,6 +81,11 @@ qdrant:
   search_limit: 5
   score_threshold: 0.35
   rag_sufficient_score: 0.7
+  # 関連性チェックが判定不能（空応答）時のフォールバック・マージン。
+  # 0.05 で「rag_sufficient_score+0.05=0.75」未満を不適合扱い。
+  # 関連ヒットが 0.76〜0.77 帯（例: Q03 の 49ers チャンク）でも適合維持するため
+  # 既定 0.08 から 0.05 に緩めた（nomic の圧縮スコア帯に合わせた調整）。
+  rag_relevance_margin: 0.05
   search_priority: ["wikipedia_ja", "livedoor", "cc_news", "japanese_text"]
 
 # Web検索設定
