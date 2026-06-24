@@ -148,6 +148,11 @@ class QdrantConfig(BaseModel):
     search_limit: int = 5
     score_threshold: float = 0.35
     rag_sufficient_score: float = 0.7
+    # 意味的関連性チェック（_evaluate_rag_relevance）が LLM 判定不能（空応答等）
+    # だった場合のフォールバック用マージン。検索最高スコアが
+    # rag_sufficient_score + このマージン 未満なら「適合と確信できない」とみなし、
+    # web_search/escalate 側へ寄せる（nomic の 0.7 ノイズ床対策）。
+    rag_relevance_margin: float = 0.08
     # True の場合、RAG検索を collection_name（または明示指定コレクション）の
     # 1コレクションのみに限定し、全コレクション横断のフォールバックを行わない。
     # ベンチマーク等でアクセス回数を最小化したい場合に使用する。

@@ -269,6 +269,59 @@ class TestExecutor:
         assert kwargs["query"] != reasoning_step.description
 
 
+class TestRagRelevanceFallback:
+    """_evaluate_rag_relevance: LLM 判定不能時のスコアベースフォールバック。"""
+
+    def setup_method(self):
+        reset_config()
+
+    def _executor(self):
+        return Executor(tool_registry=MagicMock(spec=ToolRegistry))
+
+    def test_empty_answer_low_score_not_relevant(self):
+        """空応答＋スコアが しきい値+margin 未満 → not relevant（web/escalate へ）。"""
+        ex = self._executor()
+        with patch("grace.executor.create_llm_client") as mk:
+            mk.return_value.generate_content.return_value = ""
+            # threshold 0.7 + margin 0.08 = 0.78。0.72 は未満 → False
+            assert ex._evaluate_rag_relevance(
+                "q", "out", rag_max_score=0.72, rag_threshold=0.7) is False
+
+    def test_empty_answer_high_score_relevant(self):
+        """空応答でもスコアが十分高ければ relevant 維持（Q01 0.81 を守る）。"""
+        ex = self._executor()
+        with patch("grace.executor.create_llm_client") as mk:
+            mk.return_value.generate_content.return_value = ""
+            assert ex._evaluate_rag_relevance(
+                "q", "out", rag_max_score=0.81, rag_threshold=0.7) is True
+
+    def test_llm_no_overrides_high_score(self):
+        """LLM が NO と明言したらスコアが高くても not relevant。"""
+        ex = self._executor()
+        with patch("grace.executor._LLM_CLIENT_AVAILABLE", True), \
+             patch("grace.executor.create_llm_client") as mk:
+            mk.return_value.generate_content.return_value = "NO"
+            assert ex._evaluate_rag_relevance(
+                "q", "out", rag_max_score=0.85, rag_threshold=0.7) is False
+
+    def test_llm_japanese_muskankei_is_not_relevant(self):
+        """日本語『無関係』も not relevant として解釈する。"""
+        ex = self._executor()
+        with patch("grace.executor._LLM_CLIENT_AVAILABLE", True), \
+             patch("grace.executor.create_llm_client") as mk:
+            mk.return_value.generate_content.return_value = "この検索結果は質問とは無関係です"
+            assert ex._evaluate_rag_relevance(
+                "q", "out", rag_max_score=0.85) is False
+
+    def test_llm_yes_is_relevant(self):
+        ex = self._executor()
+        with patch("grace.executor._LLM_CLIENT_AVAILABLE", True), \
+             patch("grace.executor.create_llm_client") as mk:
+            mk.return_value.generate_content.return_value = "YES、関連しています"
+            assert ex._evaluate_rag_relevance(
+                "q", "out", rag_max_score=0.72) is True
+
+
 class TestExecutorFallback:
     """フォールバック機能のテスト"""
 

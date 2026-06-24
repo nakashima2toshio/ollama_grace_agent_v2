@@ -141,7 +141,21 @@ class RAGSearchTool(BaseTool):
 
         search_candidates: List[str] = []
 
-        if self.config.qdrant.restrict_to_collection:
+        # ベンチマーク Case D の「存在しないコレクション」指定（"__grace_bench..."
+        # 接頭辞）は、restrict_to_collection でも尊重する。これを固定先で上書きすると
+        # 初回検索が空振りせず、リプラン発火を検証できないため。
+        _bench_missing = bool(collection and str(collection).startswith("__grace_bench"))
+
+        if _bench_missing:
+            # 指定された存在しないコレクションをそのまま検索候補にする。
+            # 横断モードの usable フィルタにかけると弾かれて実コレクションを
+            # 検索してしまい、空振り→replan の検証ができないため別扱いにする。
+            search_candidates = [collection]
+            logger.info(
+                f"RAGSearchTool: ベンチ Case D 指定の存在しないコレクション "
+                f"'{collection}' をそのまま使用（初回検索を空振りさせ replan を検証）"
+            )
+        elif self.config.qdrant.restrict_to_collection:
             # 単一コレクション固定モード: プラン側が別コレクションを指定しても
             # それは無視し、設定の collection_name（--collection）だけを使う。
             target = self.config.qdrant.collection_name
