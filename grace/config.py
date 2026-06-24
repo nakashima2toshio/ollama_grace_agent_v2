@@ -210,6 +210,12 @@ class ExecutorConfig(BaseModel):
     parallel_search: bool = True
     max_parallel_steps: int = 4
 
+    # reasoning ステップのタイムアウト下限（秒）。ローカルLLM（gemma4:e4b 等）は
+    # 回答生成に時間がかかり、計画側の timeout_seconds=30 では毎回タイムアウト→
+    # 不要な replan / partial を誘発する。reasoning に限りこの値まで引き上げる
+    # （0 以下で無効化）。
+    reasoning_timeout_seconds: int = 120
+
     # S3: ハイブリッド ReAct ループ
     # react_enabled は既定 False（静的 Plan-Execute を温存）。有効化すると
     # complexity >= react_complexity_threshold の計画を観測駆動 ReAct で実行する。
