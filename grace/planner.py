@@ -21,6 +21,14 @@ from services.prompts import SEARCH_QUERY_INSTRUCTION
 from services.qdrant_service import get_all_collections
 
 from .config import GraceConfig, get_config
+from .schemas import (
+    ExecutionPlan,
+    PlanStep,
+    create_plan_id,
+    validate_plan_dependencies,
+)
+
+logger = logging.getLogger(__name__)
 
 
 # 指示語で対象が未特定の「曖昧クエリ」を表すパターン（例: 「あの件について教えて」）。
@@ -52,14 +60,6 @@ def is_ambiguous_query(query: str) -> bool:
     if has_demonstrative and not has_concrete and len(q) <= 30:
         return True
     return False
-from .schemas import (
-    ExecutionPlan,
-    PlanStep,
-    create_plan_id,
-    validate_plan_dependencies,
-)
-
-logger = logging.getLogger(__name__)
 
 # =============================================================================
 # プロンプト定義（変更なし）

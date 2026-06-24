@@ -80,8 +80,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           # テスト実行に必要な依存。重い完全再現が必要なら -r requirements.txt に切替。
+          # helper_embedding / helper_llm が import 時に dotenv・openai を要求するため追加
+          # （未導入だと services 配下の import 連鎖で collection エラーになる）。
           pip install pytest pytest-asyncio pydantic pandas numpy \
-            qdrant-client tiktoken scikit-learn pyyaml
+            qdrant-client tiktoken scikit-learn pyyaml python-dotenv openai
 
       - name: Run unit tests (integration auto-skipped)
         env:
