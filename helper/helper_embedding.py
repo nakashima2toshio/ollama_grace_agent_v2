@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_GEMINI_EMBEDDING_DIMS = 3072
 DEFAULT_OPENAI_EMBEDDING_DIMS = 3072
-DEFAULT_OLLAMA_EMBEDDING_DIMS = 1024  # bge-m3（多言語・日本語対応 / 1024次元）
+DEFAULT_OLLAMA_EMBEDDING_DIMS = 768   # nomic-embed-text
 
 
 class EmbeddingClient(ABC):
@@ -160,7 +160,7 @@ class OllamaEmbedding(EmbeddingClient):
     def __init__(
         self,
         base_url: Optional[str] = None,
-        model: str = "bge-m3",
+        model: str = "nomic-embed-text",
         dims: int = DEFAULT_OLLAMA_EMBEDDING_DIMS,
     ):
         self.base_url = base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
@@ -324,7 +324,6 @@ def get_default_embedding_client(**kwargs) -> EmbeddingClient:
 
 EMBEDDING_PRICING: dict = {
     "nomic-embed-text"      : 0.0,
-    "bge-m3"                : 0.0,
     "mxbai-embed-large"     : 0.0,
     "all-minilm"            : 0.0,
     "text-embedding-3-large": 0.00013,
@@ -355,7 +354,7 @@ def get_embedding_dimensions(provider: str = "ollama") -> int:
         provider = "ollama"
 
     if provider.lower() == "ollama":
-        return DEFAULT_OLLAMA_EMBEDDING_DIMS  # 1024 (bge-m3)
+        return DEFAULT_OLLAMA_EMBEDDING_DIMS  # 768
     elif provider.lower() == "gemini":
         return DEFAULT_GEMINI_EMBEDDING_DIMS  # 3072
     elif provider.lower() == "openai":
@@ -371,20 +370,20 @@ if __name__ == "__main__":
     print("=" * 40)
 
     try:
-        print("\n[Ollama Embedding Test] bge-m3 / 1024次元")
+        print("\n[Ollama Embedding Test] nomic-embed-text / 768次元")
         ollama_emb = create_embedding_client("ollama")
         print(f"Dimensions: {ollama_emb.dimensions}")
         vector = ollama_emb.embed_text("これはテストです")
         print(f"Vector length: {len(vector)}")
         print(f"First 5 values: {vector[:5]}")
         if len(vector) == DEFAULT_OLLAMA_EMBEDDING_DIMS:
-            print("[OK] 1024次元の検証: PASS")
+            print("[OK] 768次元の検証: PASS")
         else:
-            print(f"[NG] 1024次元の検証: FAIL (actual: {len(vector)})")
+            print(f"[NG] 768次元の検証: FAIL (actual: {len(vector)})")
     except Exception as e:
         print(f"Ollama Error: {e}")
         print("Ollama が起動しているか確認してください: ollama serve")
-        print("モデルがインストール済みか確認してください: ollama pull bge-m3")
+        print("モデルがインストール済みか確認してください: ollama pull nomic-embed-text")
 
     print("\n" + "=" * 40)
     print(f"Ollama default dims : {get_embedding_dimensions('ollama')}")

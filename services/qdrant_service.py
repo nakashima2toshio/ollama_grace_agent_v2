@@ -189,7 +189,7 @@ def get_collection_embedding_params(
         {"model": str, "dims": int, "provider": str}（取得できた項目のみ）
     """
     # デフォルト設定（Ollama Embedding）
-    default_params = {"model": "bge-m3", "dims": 1024, "provider": "ollama"}
+    default_params = {"model": "nomic-embed-text", "dims": 768, "provider": "ollama"}
 
     # 1. payload に記録された Embedding メタデータを読む
     try:
@@ -234,8 +234,6 @@ def get_collection_embedding_params(
             return {"model": "text-embedding-3-small", "dims": 1536, "provider": "openai"}
         elif size == 3072:
             return {"model": "text-embedding-3-large", "dims": 3072, "provider": "openai"}
-        elif size == 1024:
-            return {"model": "bge-m3", "dims": 1024, "provider": "ollama"}
         elif size == 768:
             return {"model": "nomic-embed-text", "dims": 768, "provider": "ollama"}
         elif size > 0:
@@ -660,7 +658,7 @@ _embedding_client_cache: dict = {}
 
 
 def embed_texts_for_qdrant(
-        texts: List[str], model: str = "bge-m3", batch_size: int = 100
+        texts: List[str], model: str = "nomic-embed-text", batch_size: int = 100
 ) -> List[Optional[List[float]]]:
     """テキストをバッチ処理で Embedding に変換（Ollama Embedding 使用）
 
@@ -701,7 +699,7 @@ def embed_texts_for_qdrant(
 
 
 def create_or_recreate_collection_for_qdrant(
-        client: QdrantClient, name: str, recreate: bool, vector_size: int = 1024, use_sparse: bool = False
+        client: QdrantClient, name: str, recreate: bool, vector_size: int = 768, use_sparse: bool = False
 ):
     """
     コレクション作成または再作成
@@ -910,12 +908,12 @@ def upsert_points_to_qdrant(
 # ===================================================================
 
 def embed_query_for_search(
-        query: str, model: str = "bge-m3", dims: Optional[int] = None
+        query: str, model: str = "nomic-embed-text", dims: Optional[int] = None
 ) -> List[float]:
     """
     検索クエリをベクトル化
 
-    既定は Ollama Embedding（bge-m3 / 1024次元）。
+    既定は Ollama Embedding（nomic-embed-text / 768次元）。
     既存コレクションとの互換のため、次元数(dims)またはモデル名(model)から
     プロバイダーを自動判定するフォールバックも備える。
     """
@@ -923,10 +921,8 @@ def embed_query_for_search(
     provider = "ollama"
 
     # 次元数による判定
-    if dims == 1024:
-        provider = "ollama"   # bge-m3
-    elif dims == 768:
-        provider = "ollama"   # nomic-embed-text（旧コレクション）
+    if dims == 768:
+        provider = "ollama"
     elif dims == 1536:
         provider = "openai"
     elif dims == 3072:
@@ -934,7 +930,7 @@ def embed_query_for_search(
 
     # モデル名による判定 (次元数が指定されていない場合のフォールバック)
     elif model:
-        if model == "nomic-embed-text" or "nomic" in model or "bge" in model or "mxbai" in model:
+        if model == "nomic-embed-text" or "nomic" in model:
             provider = "ollama"
         elif "text-embedding-3" in model or "text-embedding-ada" in model:
             provider = "openai"
@@ -1012,7 +1008,7 @@ def merge_collections(
         source_collections: List[str],
         target_collection: str,
         recreate: bool = True,
-        vector_size: int = 1024,
+        vector_size: int = 768,
         progress_callback: Optional[callable] = None,
 ) -> Dict[str, Any]:
     """複数コレクションを統合して新コレクションに登録
