@@ -3,7 +3,6 @@ GRACE Executor Tests
 Executorのテスト
 """
 
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -268,68 +267,6 @@ class TestExecutor:
         # description（'推論'）ではなく original_query が渡る
         assert kwargs["query"] == sample_plan.original_query
         assert kwargs["query"] != reasoning_step.description
-
-
-class TestBlendRouteBounds:
-    """S2: 検索ハンドリング連動のフロア/天井（_blend_groundedness_confidence）。"""
-
-    def setup_method(self):
-        reset_config()
-
-    @pytest.fixture
-    def mock_tool_registry(self):
-        return MagicMock(spec=ToolRegistry)
-
-    def _stub_gres(self, executor, *, verified, support_rate=0.0,
-                   supported=0, contradicted=0, total=0):
-        gres = SimpleNamespace(
-            verified=verified, support_rate=support_rate,
-            supported=supported, contradicted=contradicted, total=total,
-            has_contradiction=contradicted > 0, reason="stub",
-        )
-        executor.groundedness_verifier = MagicMock()
-        executor.groundedness_verifier.verify.return_value = gres
-
-    def test_floor_lifts_clear_grounded_hit(self, mock_tool_registry):
-        """Fix1: 高スコア命中＋網羅十分なら NOTIFY フロア(0.7)まで底上げ。"""
-        executor = Executor(tool_registry=mock_tool_registry)
-        # 接地はされているが support_rate が低めで希釈され、素のブレンドは低い
-        self._stub_gres(executor, verified=True, support_rate=0.3,
-                        supported=1, contradicted=0, total=1)
-        conf = executor._blend_groundedness_confidence(
-            query="Amazonの新規雇用は何件？",
-            final_answer="5,000人の在宅カスタマーサービス職です。",
-            self_eval=0.4, coverage=0.6, aggregated=0.5,
-            sources=["src"], search_max_score=0.81,
-        )
-        assert conf >= executor.config.confidence.rag_hit_floor  # 0.7
-
-    def test_ceiling_caps_low_coverage_overconfidence(self, mock_tool_registry):
-        """Fix2: 網羅不足なのに自己評価だけ高い回答は天井(0.5)で抑制。"""
-        executor = Executor(tool_registry=mock_tool_registry)
-        # groundedness は判定不能（neutral）→ self_eval が支配しがちなフォールバック経路
-        self._stub_gres(executor, verified=False)
-        conf = executor._blend_groundedness_confidence(
-            query="あの件について詳しく教えて",  # 曖昧
-            final_answer="安全運転の注意点は…",   # クエリに答えていない
-            self_eval=0.9, coverage=0.2, aggregated=0.72,
-            sources=["src"], search_max_score=0.72,
-        )
-        assert conf <= executor.config.confidence.low_coverage_ceiling  # 0.5
-
-    def test_no_bounds_leaves_value_untouched(self, mock_tool_registry):
-        """中間ケース（網羅十分・明確なヒットではない）はフロア/天井とも非適用。"""
-        executor = Executor(tool_registry=mock_tool_registry)
-        self._stub_gres(executor, verified=True, support_rate=0.7,
-                        supported=2, contradicted=0, total=2)
-        conf = executor._blend_groundedness_confidence(
-            query="49ersのGM人事を比較して",
-            final_answer="バラードとセサリオが候補です。",
-            self_eval=0.7, coverage=0.7, aggregated=0.7,
-            sources=["src"], search_max_score=0.70,  # フロア閾値0.75未満
-        )
-        # 天井（coverage>=0.5）にもフロア（score<0.75）にも該当しない
-        assert 0.5 < conf < 0.9
 
 
 class TestExecutorFallback:

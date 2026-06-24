@@ -97,14 +97,6 @@ class ConfidenceConfig(BaseModel):
     self_eval_weight: float = 0.25      # 自己評価（従）の重み
     coverage_weight: float = 0.15       # 網羅度（従）の重み
     search_aux_weight: float = 0.2      # 検索ベース集約値（補助）の重み
-    # S2: 検索ハンドリング連動（route 改善 / nomic の圧縮スコア帯対策）
-    # Fix1: 明確な接地ヒットは最終信頼度を過小評価しない（フロア）
-    rag_hit_floor_score: float = 0.75   # 検索最高スコアがこの値以上を「明確なヒット」とみなす
-    rag_hit_floor_coverage: float = 0.5 # かつ網羅度がこの値以上のとき
-    rag_hit_floor: float = 0.7          # 最終信頼度をこの値まで底上げ（NOTIFY 到達）
-    # Fix2: 接地・網羅が弱いのに自己評価が高いだけの回答を過信させない（天井）
-    low_coverage_threshold: float = 0.5 # 網羅度がこの値未満なら
-    low_coverage_ceiling: float = 0.5   # 最終信頼度をこの値以下に抑える（CONFIRM/ESCALATE へ）
     # S1: confidence 較正（温度スケーリング）パラメータの保存先
     calibration_path: str = "config/calibration.json"
 

@@ -1789,17 +1789,6 @@ class Executor:
             aggregated_score = sum(confidences) / len(confidences) if confidences else 0.0
         logger.info(f"Aggregated confidence (auxiliary): {aggregated_score:.2f}")
 
-        # S2: RAG 検索ステップの最高スコア（検索関連度）を集約。
-        # フロア/天井（検索ハンドリング連動）の判定に用いる。
-        rag_max_score: Optional[float] = None
-        rag_step_ids = {s.step_id for s in state.plan.steps if s.action == "rag_search"}
-        for sid in rag_step_ids:
-            cs = self.step_confidence_scores.get(sid)
-            factors = getattr(cs, "factors", None) if cs else None
-            score = getattr(factors, "search_max_score", None) if factors else None
-            if score is not None:
-                rag_max_score = score if rag_max_score is None else max(rag_max_score, score)
-
         # S1: groundedness を主成分にブレンドし、検索ベースの集約値は補助項へ降格。
         # 最後に較正（temperature scaling）を適用する。
         final_conf = self._blend_groundedness_confidence(
@@ -1809,7 +1798,6 @@ class Executor:
             coverage=coverage_score,
             aggregated=aggregated_score,
             sources=state.get_completed_sources(),
-            search_max_score=rag_max_score,
         )
         calibrated = self._calibrator.transform(final_conf)
         if not self._calibrator.is_identity():
@@ -1825,7 +1813,6 @@ class Executor:
         coverage: Optional[float],
         aggregated: float,
         sources: List[str],
-        search_max_score: Optional[float] = None,
     ) -> float:
         """S1: groundedness を主成分に最終 confidence を合成する。
 
@@ -1834,9 +1821,6 @@ class Executor:
         - groundedness が未検証（ソース無し/LLM失敗）の場合は従来ブレンド
           （self_eval / coverage / aggregated）にフォールバック。
         - 矛盾検出（contradiction）や検索0件の過信は減点。
-        - S2: 検索ハンドリング連動（route 改善）。明確な接地ヒットは過小評価
-          しない（フロア）一方、網羅が弱く自己評価だけ高い回答は過信させない
-          （天井）。nomic の圧縮スコア帯でも介入レベルが妥当になるようにする。
         """
         cc = self.config.confidence
         if not getattr(cc, "groundedness_enabled", True) or not final_answer:
@@ -1846,21 +1830,6 @@ class Executor:
 
         # 補助項（検索ベース集約）の重み
         w_aux = float(getattr(cc, "search_aux_weight", 0.2))
-
-        def _apply_route_bounds(final: float) -> float:
-            """S2: 検索ハンドリング連動のフロア/天井を適用する。"""
-            # Fix2: 網羅度が低い（クエリに答えきれていない）のに自己評価だけ高い
-            #       回答は過信させない。曖昧クエリを CONFIRM/ESCALATE 側へ寄せる。
-            if coverage is not None and coverage < cc.low_coverage_threshold:
-                final = min(final, cc.low_coverage_ceiling)
-            # Fix1: 検索が明確にヒットし（高スコア）かつ網羅も十分・矛盾なしなら、
-            #       最終信頼度を過小評価しない（NOTIFY 到達フロア）。
-            if (search_max_score is not None
-                    and search_max_score >= cc.rag_hit_floor_score
-                    and not getattr(gres, "has_contradiction", False)
-                    and (coverage is None or coverage >= cc.rag_hit_floor_coverage)):
-                final = max(final, cc.rag_hit_floor)
-            return final
 
         # 判定できた主張数（supported + contradicted）。0 の場合は groundedness を
         # 「裏付け0」ではなく「判定不能（中立）」として扱い、support_rate=0 を
@@ -1880,7 +1849,7 @@ class Executor:
             _reason = gres.reason if not gres.verified else f"0 decided of {getattr(gres, 'total', 0)}"
             logger.info(f"Groundedness neutral ({_reason}); "
                         f"fallback answer_conf={answer_conf:.3f}")
-            return _apply_route_bounds((1.0 - w_aux) * answer_conf + w_aux * aggregated)
+            return (1.0 - w_aux) * answer_conf + w_aux * aggregated
 
         wg = float(getattr(cc, "groundedness_weight", 0.6))
         ws = float(getattr(cc, "self_eval_weight", 0.25))
@@ -1906,7 +1875,7 @@ class Executor:
             f"({gres.supported}/{gres.supported + gres.contradicted} decided, "
             f"total={gres.total}) -> final={final:.3f}"
         )
-        return _apply_route_bounds(final)
+        return final
 
     def _create_execution_result(self, state: ExecutionState) -> ExecutionResult:
         """実行結果を生成"""
