@@ -97,6 +97,9 @@ class ConfidenceConfig(BaseModel):
     self_eval_weight: float = 0.25      # 自己評価（従）の重み
     coverage_weight: float = 0.15       # 網羅度（従）の重み
     search_aux_weight: float = 0.2      # 検索ベース集約値（補助）の重み
+    # 曖昧クエリ等の明確化（ask_user）計画＝最終回答なしのときに用いる低信頼値。
+    # 0.4 未満で ESCALATE、0.4〜0.7 で CONFIRM 介入になる（既定は ESCALATE 寄り）。
+    clarification_confidence: float = 0.3
     # S1: confidence 較正（温度スケーリング）パラメータの保存先
     calibration_path: str = "config/calibration.json"
 
