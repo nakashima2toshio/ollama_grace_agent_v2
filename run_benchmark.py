@@ -53,6 +53,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="検索対象の Qdrant コレクション名（既定: cc_news_2per_ollama / 768次元）",
     )
     parser.add_argument(
+        "--model", type=str, default=None,
+        help="エージェント/評価の LLM を上書き（例: --model llama3.2:3b で大幅高速化）。"
+             "未指定なら grace_config.yml の llm.model（gemma4:e4b）",
+    )
+    parser.add_argument(
+        "--lite-eval", action="store_true",
+        help="測定用の重い LLM 呼び出し（groundedness 検証・LLM-as-judge）を省略して高速化する。"
+             "反復イテレーション向け（介入レベルの厳密計測には非推奨）",
+    )
+    parser.add_argument(
         "--query-id", action="append", dest="query_ids", default=None,
         metavar="ID", help="実行するクエリID（複数指定可。例: --query-id Q01 --query-id Q03）",
     )
@@ -105,7 +115,23 @@ def main() -> None:
         _print_query_list()
         return
 
-    runner = BenchmarkRunner(qdrant_collection=args.collection)
+    # --lite-eval: 測定用の重い LLM 呼び出しを省略して高速化する。
+    # groundedness 検証（最も遅い ~100秒/件）を無効化し、LLM-as-judge もスキップする。
+    if args.lite_eval:
+        from grace.config import get_config
+        cfg = get_config()
+        cfg.confidence.groundedness_enabled = False
+        runner = BenchmarkRunner(
+            qdrant_collection=args.collection,
+            model_name=args.model,
+            enable_judge=False,
+            config=cfg,
+        )
+    else:
+        runner = BenchmarkRunner(
+            qdrant_collection=args.collection,
+            model_name=args.model,
+        )
     sessions = runner.run_query_set(
         runs_per_query=args.runs,
         fast=args.fast,
