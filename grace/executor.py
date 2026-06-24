@@ -906,6 +906,18 @@ class Executor:
         （実行中のスレッド自体は中断できないためバックグラウンドで放置される）
         """
         timeout = step.timeout_seconds
+
+        # reasoning はローカルLLM（gemma4:e4b 等）で時間がかかるため、計画側が
+        # 設定した短い timeout（既定30秒）を config の下限まで引き上げる。
+        # これにより毎ステップのタイムアウト→不要な replan / partial を防ぐ。
+        if step.action == "reasoning":
+            rt = getattr(
+                getattr(self.config, "executor", None),
+                "reasoning_timeout_seconds", 0,
+            )
+            if rt and rt > 0:
+                timeout = max(timeout or 0, rt)
+
         if not timeout:
             return tool.execute(**kwargs)
 
