@@ -63,11 +63,11 @@ class LLMConfig(BaseModel):
 
 class EmbeddingConfig(BaseModel):
     """Embedding設定（Ollama ローカル Embedding）"""
-    # 既定は Ollama の nomic-embed-text（768次元）。
+    # 既定は Ollama の bge-m3（多言語・日本語対応 / 1024次元）。
     # ※次元を変更した場合は Qdrant コレクションの再作成が必要。
     provider: str = "ollama"
-    model: str = "nomic-embed-text"
-    dimensions: int = 768
+    model: str = "bge-m3"
+    dimensions: int = 1024
 
 
 class ConfidenceWeights(BaseModel):
@@ -239,8 +239,8 @@ class OllamaConfig(BaseModel):
         "phi3",                       # 軽量
         "gemma2",                     # Google製軽量
     ])
-    embedding_model: str = "nomic-embed-text"
-    embedding_dims: int = 768
+    embedding_model: str = "bge-m3"
+    embedding_dims: int = 1024
 
 
 class GraceConfig(BaseModel):

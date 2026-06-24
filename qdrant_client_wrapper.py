@@ -47,8 +47,8 @@ except ImportError:
         DOCKER_IMAGE = "qdrant/qdrant"
         HEALTH_CHECK_ENDPOINT = "/collections"
         DEFAULT_TIMEOUT = 30
-        DEFAULT_VECTOR_SIZE = 768
-        DEFAULT_EMBEDDING_MODEL = "nomic-embed-text"
+        DEFAULT_VECTOR_SIZE = 1024
+        DEFAULT_EMBEDDING_MODEL = "bge-m3"
 
 # ログ設定
 logger = logging.getLogger(__name__)
@@ -93,8 +93,8 @@ DEFAULT_EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "ollama")  # 既定
 # プロバイダー別のデフォルト設定
 PROVIDER_DEFAULTS = {
     "ollama"   : {
-        "model": "nomic-embed-text",
-        "dims" : 768,  # nomic-embed-text の次元数
+        "model": "bge-m3",
+        "dims" : 1024,  # bge-m3（多言語・日本語対応）の次元数
     },
     "gemini"   : {
         "model": "gemini-embedding-001",
