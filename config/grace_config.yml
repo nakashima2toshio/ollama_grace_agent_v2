@@ -16,15 +16,15 @@ llm:
 # Embedding設定
 embedding:
   provider: "ollama"               # [MIGRATION openai→ollama] "openai" → "ollama"
-  model: "nomic-embed-text"        # [MIGRATION openai→ollama] "text-embedding-3-large" → "nomic-embed-text"
-  dimensions: 768                  # [MIGRATION openai→ollama] 3072 → 768（Qdrant コレクション再作成必須）
+  model: "bge-m3"                  # [MIGRATION nomic→bge-m3] 日本語検索品質向上のため bge-m3 に変更
+  dimensions: 1024                 # bge-m3 は 1024次元（Qdrant コレクション再作成必須）
 
 # Ollama設定（新規追加）
 ollama:
   base_url: "http://localhost:11434/v1"
   llm_model: "gemma4:e4b"
-  embedding_model: "nomic-embed-text"
-  embedding_dims: 768
+  embedding_model: "bge-m3"
+  embedding_dims: 1024
 
 # Confidence設定
 confidence:
