@@ -352,6 +352,8 @@ class Executor:
                         is_relevant = self._evaluate_rag_relevance(
                             query=step.query or step.description,
                             rag_output=result.output or "",
+                            rag_max_score=rag_max_score,
+                            rag_threshold=rag_threshold,
                         )
                         if not is_relevant:
                             logger.info("RAG result not semantically relevant, need web_search")
@@ -1263,6 +1265,8 @@ class Executor:
             self,
             query: str,
             rag_output: str,
+            rag_max_score: Optional[float] = None,
+            rag_threshold: Optional[float] = None,
     ) -> bool:
         """
         LLMを使用してRAG検索結果がユーザーの質問に意味的に適合しているかを判定する。
@@ -1270,13 +1274,36 @@ class Executor:
         コサイン類似度は文構造の類似性を反映するが、意味的な適合性は保証しない。
         例: 「日本の多義性」と「言語の多義性」は文構造が似ているが主題が異なる。
 
+        判定不能（LLM が空応答／失敗）の場合は、検索最高スコアに基づくフォールバック
+        を行う。nomic-embed-text は無関係な日本語にも 0.70〜0.76 を返すため、無条件
+        True（適合）にすると web_search/replan が一切発火しない。スコアが
+        rag_sufficient_score + rag_relevance_margin 未満なら「適合と確信できない」
+        とみなし False（＝web/escalate 側）を返す。
+
         Args:
             query: ユーザーの元の質問文
             rag_output: RAG検索結果の出力文字列
+            rag_max_score: 検索最高スコア（フォールバック判定に使用）
+            rag_threshold: 十分性しきい値（既定 config.qdrant.rag_sufficient_score）
 
         Returns:
             bool: 適合していればTrue、不適合ならFalse
         """
+        def _score_fallback(reason: str) -> bool:
+            thr = rag_threshold if rag_threshold is not None else self.config.qdrant.rag_sufficient_score
+            margin = getattr(self.config.qdrant, "rag_relevance_margin", 0.08)
+            if rag_max_score is not None and rag_max_score < thr + margin:
+                logger.info(
+                    f"RAG relevance fallback ({reason}): score={rag_max_score:.4f} "
+                    f"< {thr + margin:.4f} → 適合と確信できないため not-relevant 扱い"
+                )
+                return False
+            logger.info(
+                f"RAG relevance fallback ({reason}): score={rag_max_score} "
+                f"は十分高いため relevant 扱い"
+            )
+            return True
+
         prompt = (
             "以下の【検索結果】が、【ユーザーの質問】に対する回答として使えるかを判定してください。\n"
             "\n"
@@ -1302,26 +1329,27 @@ class Executor:
 
             # YES/NO のみ返させる。出力枠が小さいと推論/thinking系モデルで本文が空になるため
             # 十分な枠を確保する。
-            answer = (llm.generate_content(
+            raw = (llm.generate_content(
                 prompt=prompt,
                 temperature=0.0,
                 max_tokens=256,
-            ) or "").strip().upper()
+            ) or "").strip()
+            up = raw.upper()
 
             elapsed = _time.time() - t0
-            if not answer:
-                # 空応答は判定不能とみなし、例外時と同じく既存動作（スコアのみで判定＝適合扱い）を維持
-                logger.warning("RAG relevance check returned empty answer, defaulting to True")
+            # 否定語を優先的に判定（「無関係」「関連性が低い」等が「関連」を含むため）
+            if "NO" in up or "無関係" in raw or "不適合" in raw or "関連性が低い" in raw:
+                logger.info(f"RAG relevance check: '{raw[:40]}' -> False ({elapsed:.1f}s)")
+                return False
+            if "YES" in up or "関連" in raw or "適合" in raw:
+                logger.info(f"RAG relevance check: '{raw[:40]}' -> True ({elapsed:.1f}s)")
                 return True
-            is_relevant = "YES" in answer
-            logger.info(
-                f"RAG relevance check: '{answer}' -> {is_relevant} ({elapsed:.1f}s)"
-            )
-            return is_relevant
+            # 空応答・判定不能 → スコアベースのフォールバック
+            return _score_fallback("empty/unparseable")
 
         except Exception as e:
-            logger.warning(f"RAG relevance check failed: {e}, defaulting to True")
-            return True  # フォールバック: 判定失敗時は既存動作（スコアのみで判定）を維持
+            logger.warning(f"RAG relevance check failed: {e}")
+            return _score_fallback(f"error: {e}")
 
     def _execute_dynamic_web_search(
             self,
