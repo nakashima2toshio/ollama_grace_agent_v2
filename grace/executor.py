@@ -1206,6 +1206,12 @@ class Executor:
             kwargs["language"] = self.config.web_search.language
 
         elif step.action == "reasoning":
+            # reasoning はユーザーの「元の質問」に答えるステップ。
+            # step.query が空のとき step.description（"取得した情報を元に回答を生成"
+            # 等の内部指示）を質問として渡すと、LLM が質問を見失い検索結果を
+            # 全件羅列する汎用サマリーになってしまう（coverage/groundedness 低下）。
+            # 元の質問を明示的に渡して直接回答させる。
+            kwargs["query"] = step.query or state.plan.original_query
             # 全成功ステップの結果をコンテキストとして追加
             # （depends_on ではなく state.step_results 全体を参照）
             # → 動的挿入された web_search やリプラン後の結果も取得可能

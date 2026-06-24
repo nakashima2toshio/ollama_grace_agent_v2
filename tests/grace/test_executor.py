@@ -259,6 +259,16 @@ class TestExecutor:
         # 信頼度は0.0-1.0の範囲
         assert 0.0 <= result.overall_confidence <= 1.0
 
+    def test_reasoning_kwargs_use_original_query(self, mock_tool_registry, sample_plan):
+        """reasoning ステップは step.description ではなく元の質問を query に渡す。"""
+        executor = Executor(tool_registry=mock_tool_registry)
+        state = ExecutionState(plan=sample_plan)
+        reasoning_step = sample_plan.steps[1]  # action='reasoning', query=None, description='推論'
+        kwargs = executor._prepare_tool_kwargs(reasoning_step, state)
+        # description（'推論'）ではなく original_query が渡る
+        assert kwargs["query"] == sample_plan.original_query
+        assert kwargs["query"] != reasoning_step.description
+
 
 class TestBlendRouteBounds:
     """S2: 検索ハンドリング連動のフロア/天井（_blend_groundedness_confidence）。"""
