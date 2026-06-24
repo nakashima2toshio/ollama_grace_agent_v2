@@ -173,10 +173,29 @@ class OllamaEmbedding(EmbeddingClient):
     def dimensions(self) -> int:
         return self._dims
 
+    def _apply_task_prefix(self, text: str, kind: str) -> str:
+        """nomic-embed-text 用のタスクプレフィックスを付与する。
+
+        nomic-embed-text は ``search_query:`` / ``search_document:`` の
+        タスクプレフィックスが必須で、付けないと検索品質が大きく劣化する
+        （日本語文がスコア 0.7〜0.8 帯に密集し正解が際立たなくなる）。
+        プレフィックス不要なモデル（bge-m3 / mxbai 等）には付与しない。
+
+        Args:
+            text: 入力テキスト
+            kind: "query"（検索クエリ）または "document"（登録文書）
+        """
+        if "nomic" not in self.model:
+            return text
+        prefix = "search_query: " if kind == "query" else "search_document: "
+        return f"{prefix}{text}"
+
     def embed_text(self, text: str, task_type: Optional[str] = None) -> List[float]:
+        # 単一テキストは原則「検索クエリ」。task_type に document 指定があれば文書扱い。
+        kind = "document" if (task_type and "document" in task_type) else "query"
         response = self.client.embeddings.create(
             model=self.model,
-            input=text,
+            input=self._apply_task_prefix(text, kind),
             # dimensions パラメータは Ollama では非対応（指定しない）
         )
         return response.data[0].embedding
@@ -185,9 +204,11 @@ class OllamaEmbedding(EmbeddingClient):
         all_embeddings: List[List[float]] = []
         for i in range(0, len(texts), batch_size):
             batch = texts[i:i + batch_size]
+            # バッチ Embedding は登録（文書）用途。nomic では search_document: を付与。
+            prefixed = [self._apply_task_prefix(t, "document") for t in batch]
             response = self.client.embeddings.create(
                 model=self.model,
-                input=batch,
+                input=prefixed,
             )
             sorted_data = sorted(response.data, key=lambda x: x.index)
             all_embeddings.extend([item.embedding for item in sorted_data])
