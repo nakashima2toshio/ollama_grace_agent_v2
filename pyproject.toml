@@ -15,7 +15,6 @@ dependencies = [
     # Core: Webアプリ・UI
     # ----------------------------------------------------------------
     "streamlit==1.48.1",
-    "streamlit-mermaid==0.3.0",
     "fastapi==0.115.6",
     "uvicorn==0.34.0",
     "gradio==5.44.1",
