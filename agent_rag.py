@@ -205,6 +205,28 @@ def show_qdrant_crud_page():
         """
     )
 
+    st.divider()
+
+    # --- Qdrantコレクション削除コマンドの使い方（CLI） ---
+    st.subheader("🛠️ コマンドの使い方（コレクション削除）")
+    st.markdown("**Qdrantのコレクションの削除** — `qdrant_delete_collection.py`")
+    st.caption("不要なコレクションを CLI で削除する。--list は次元数・Embeddingモデルも表示し、"
+               "768次元(nomic/ollama) と 3072次元(旧openai/gemini) を判別して誤削除を防げる。")
+    st.code(
+        "# 一覧表示（次元数・embedding_model 付き）\n"
+        "uv run python qdrant_delete_collection.py --list\n"
+        "uv run python qdrant_delete_collection.py --list --ollama-only\n"
+        "\n"
+        "# 削除（確認プロンプトあり）\n"
+        "uv run python qdrant_delete_collection.py cc_news_2per_ollama\n"
+        "\n"
+        "# 確認をスキップして削除\n"
+        "uv run python qdrant_delete_collection.py cc_news_2per_ollama --yes",
+        language="bash",
+    )
+    st.info("事前に Qdrant の起動（localhost:6333）が必要です。コレクション削除は取り消せません。",
+            icon="⚠️")
+
 
 def _resolve_startup_model() -> str:
     """
