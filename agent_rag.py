@@ -137,6 +137,54 @@ def show_rag_data_creation_page():
         """
     )
 
+    st.divider()
+
+    # --- 各コマンドの使い方（CLI / Streamlit） ---
+    st.subheader("🛠️ コマンドの使い方")
+
+    st.markdown("**① データのダウンロード** — `down_load_non_qa_rag_data_from_huggingface.py`")
+    st.caption("HuggingFace のデータセットを取得・前処理する Streamlit ツール（別ポートで起動）。")
+    st.code(
+        "uv run streamlit run down_load_non_qa_rag_data_from_huggingface.py "
+        "--server.port=8502",
+        language="bash",
+    )
+
+    st.markdown("**② データのチャンキング** — `chunking/csv_text_to_chunks_text_csv.py`")
+    st.caption("LLM（Ollama / gemma4:e4b）ベースのセマンティックチャンキング CLI。")
+    st.code(
+        "# 基本（固定ファイル名で出力）\n"
+        "uv run python -m chunking.csv_text_to_chunks_text_csv \\\n"
+        "  --input-file OUTPUT/cc_news_1per.csv \\\n"
+        "  --output output_chunked\n"
+        "# → output_chunked/cc_news_1per_chunks.csv\n"
+        "\n"
+        "# 主なオプション:\n"
+        "#   --model gemma4:e4b     使用するOllamaモデル（既定 gemma4:e4b）\n"
+        "#   --text-column text     CSVのテキストカラム名\n"
+        "#   --max-rows 100         最大処理行数（CSV）\n"
+        "#   --workers 8            並列ワーカー数\n"
+        "#   --timestamp            出力ファイル名に日時を付与（既定は固定名）",
+        language="bash",
+    )
+
+    st.markdown("**③ Qdrantコレクションの削除** — `qdrant_delete_collection.py`")
+    st.caption("不要なコレクションを削除する CLI。--list は次元数・Embeddingモデルも表示し、"
+               "768次元(nomic/ollama) と 3072次元(旧openai/gemini) を判別できる。")
+    st.code(
+        "# 一覧表示（次元数・embedding_model 付き）\n"
+        "uv run python qdrant_delete_collection.py --list\n"
+        "uv run python qdrant_delete_collection.py --list --ollama-only\n"
+        "\n"
+        "# 削除（確認プロンプトあり）\n"
+        "uv run python qdrant_delete_collection.py cc_news_2per_ollama\n"
+        "\n"
+        "# 確認をスキップして削除\n"
+        "uv run python qdrant_delete_collection.py cc_news_2per_ollama --yes",
+        language="bash",
+    )
+    st.info("いずれも事前に Qdrant の起動（localhost:6333）が必要です。", icon="ℹ️")
+
 
 def show_qdrant_crud_page():
     """QdrantのCRUDページ"""
