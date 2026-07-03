@@ -32,7 +32,7 @@ question / request / incident）する。FAQ 質問（question。例:「課金�
 上位計画: docs/migration_and_update.md
 
 前提:
-- Ollama が起動済み（既定 http://localhost:11434）。LLM=gemma4:e4b（軽量=llama3.2:3b）、
+- Ollama が起動済み（既定 http://localhost:11434）。LLM=gemma4:e4b（軽量=gemma4:e4b）、
   Embedding=nomic-embed-text（768次元）。ローカル実行のため API キーは不要
 - Qdrant が起動済み（既定 http://localhost:6333）で RAG コレクション（*_ollama）が登録済み
 
@@ -87,7 +87,8 @@ ActionType = Literal["create_ticket", "send_reply", "escalate_to_human"]
 #   incident = 障害・被害・トラブルの発生報告
 Intent = Literal["question", "request", "incident"]
 
-# 意図分類・情報なし判定に使う軽量モデルは config.llm.light_model（既定 llama3.2:3b）を用いる。
+# 意図分類・情報なし判定に使う軽量モデルは config.llm.light_model（既定 gemma4:e4b）を用いる。
+# 日本語の question/request 判定は 3B 級だと精度不足だったため既定を gemma4:e4b に統一した。
 
 
 @dataclass
@@ -193,9 +194,16 @@ def create_intent_classifier(config) -> Callable[[str], Optional[Intent]]:
     def classify(query: str) -> Optional[Intent]:
         prompt = (
             "あなたはカスタマーサポートの一次受付です。次の問い合わせの意図を 1 語で分類してください。\n\n"
-            "- question : 情報・手順・制度・規定を知りたい（FAQ質問。例:「課金プランの違いを教えて」「解約方法を教えて」）\n"
+            "- question : 情報・手順・制度・規定を知りたい（FAQ質問）。\n"
+            "    例:「課金プランの違いを教えて」「解約方法を教えて」\n"
+            "        「住民税の減免制度の概要を教えて」「行政不服審査制度とはどんな制度ですか？」\n"
             "- request  : 操作・手続きの実行を依頼したい（例:「返品したい」「解約したい」「申請様式がほしい」）\n"
             "- incident : 障害・被害・トラブルの発生報告（例:「サービスが落ちています」「二重に課金された」「商品が破損していた」）\n\n"
+            "重要な判定基準:\n"
+            "・「〜を教えて」「〜とは」「〜の概要」「〜について」など、制度・仕組み・手順の\n"
+            "  説明を求める文は、たとえ『減免』『不服』『解約』等の語を含んでいても question。\n"
+            "・話者自身に対する処理・手続きの実行を求める文（「〜したい」「〜してほしい」\n"
+            "  「〜を判断してほしい」）だけが request。\n\n"
             f"問い合わせ: {query}\n\n"
             "出力（question / request / incident のいずれか 1 語のみ）:"
         )

@@ -2,7 +2,7 @@
 
 **Version 1.4（次工程候補①〜④をすべて実装: ungrounded 計測是正・web_search 耐性強化・実データ取得・実 ActionTool＋本人確認）** | 最終更新: 2026-07-03
 
-> 📌 **移植メモ**: 本書は `anthropic_grace_agent_v2` の同名主設計書（v1.4）を `ollama_grace_agent_v2` へ移植したもの。設計ロジック（7 機構・二段判定・④' 情報なし判定・KPI ハーネス）はプロバイダ非依存でそのまま踏襲し、LLM/Embedding/コレクション名/API キー/コストの各層は Ollama / ローカル LLM へ読み替えた（既定 LLM `gemma4:e4b`・軽量 `llama3.2:3b`・Embedding `nomic-embed-text` 768 次元・コレクション `*_ollama`・API キー不要・API コスト無し）。移植方針の詳細は [`docs/vertical_port_spec.md`](../../docs/vertical_port_spec.md)、作業 TODO は [`docs/vertical_port_todo.md`](../../docs/vertical_port_todo.md) を参照。
+> 📌 **移植メモ**: 本書は `anthropic_grace_agent_v2` の同名主設計書（v1.4）を `ollama_grace_agent_v2` へ移植したもの。設計ロジック（7 機構・二段判定・④' 情報なし判定・KPI ハーネス）はプロバイダ非依存でそのまま踏襲し、LLM/Embedding/コレクション名/API キー/コストの各層は Ollama / ローカル LLM へ読み替えた（既定 LLM `gemma4:e4b`・軽量 `gemma4:e4b`・Embedding `nomic-embed-text` 768 次元・コレクション `*_ollama`・API キー不要・API コスト無し）。移植方針の詳細は [`docs/vertical_port_spec.md`](../../docs/vertical_port_spec.md)、作業 TODO は [`docs/vertical_port_todo.md`](../../docs/vertical_port_todo.md) を参照。
 
 > ✅ **実装状況**: `VerticalProfile` と `--vertical {gov|saas|ec}` は **`agent_support_example.py` に実装**される設計。しきい値上書き・エスカレ語（二段判定）・アクション対応（二段判定）・本人確認に加え、`collections`（`allowed_collections` による検索範囲の実限定）と `prompt_addendum`（reasoning プロンプトへの注入）もフル配線する。KPI 評価は `eval/vertical/`（§9）、テスト用コレクションの一括登録は `eval/vertical/register_test_collections.py`（§8）を参照。
 
@@ -393,7 +393,7 @@ KPI 8 指標（`metrics.py`。カテゴリ別の decision/action accuracy も同
 
 - **keyword-trap の安定化**: 専用コレクション登録後、keyword-trap 質問（返金ポリシー・解約手続き・課金プラン・SLA・減免概要・行政不服審査）が RAG 根拠つきで安定して answer になり、`検索範囲を限定: ['ec_policy_ollama', ...]` ログが出ることを確認する（§8 の狙い＝揺れの解消）。
 - **誤エスカレ**: false_escalate_rate・forced_escalate_misfire_rate が 3 業種すべてで 0 になり、citation_rate・identity_check_rate（ec）が維持されることを確認する。
-- **軽量モデルの動作**: ステップ確信度評価を軽量モデル（`llama3.2:3b`・`config.llm.light_model`）で実行すること（`initialized with model: llama3.2:3b` ログ）。既存の安全弁（Heuristic 比較・検索スコア上書き）も期待どおり発動することを確認し、mean_latency を実機で計測する。
+- **軽量モデルの動作**: ステップ確信度評価を軽量モデル（既定 `gemma4:e4b`・`config.llm.light_model`）で実行すること。既定は精度優先で `gemma4:e4b`（メインと同一）だが、`config.llm.light_model="llama3.2:3b"` 等に切り替えるとレイテンシを短縮できる（意図分類の精度とのトレードオフ）。既存の安全弁（Heuristic 比較・検索スコア上書き）も期待どおり発動することを確認し、mean_latency を実機で計測する。
 - **out-of-scope × 動的 Web の answer 化**: 社内根拠ゼロ→Web の一般情報で「情報なし＋一般的な確認方法の案内」型の実質回答が生成され、④' が answered と判定して answer 通過する事象（ec 入荷予定日・gov 税制改正予測・saas「500 エラー報告」）。escalate_recall 低下の主因（§10 #10 で対処済み）。再計測で回復を確認する。
 - **ungrounded_answer_rate の過大計上**: Q&A 形式ソースに対する Groundedness 検証が「neutral (0 decided)」となりがちで support_rate=0 に落ちる計測方法の既知課題（§10 #11 で是正）。回答自体は citation つき・出典明示である点に注意。
 
@@ -414,9 +414,10 @@ KPI 8 指標（`metrics.py`。カテゴリ別の decision/action accuracy も同
 eval 1 ケースの LLM 呼び出しは約 7〜10 回（reasoning・ステップ毎の確信度評価・`evaluate_final`・
 groundedness 検証・⑤ 再検証・軽量判定 2 種）。1 ケースあたりの呼び出し回数が多いほど wall-clock が伸びる。
 
-- 最大の実時間費目はステップ毎の確信度評価 `evaluate_with_factors`。これを軽量モデル
-  `llama3.2:3b`（`config.llm.light_model`）で実行するとレイテンシを短縮できる。reasoning・groundedness・`evaluate_final` は
-  既定 `gemma4:e4b` を維持する。
+- 最大の実時間費目はステップ毎の確信度評価 `evaluate_with_factors`。これは軽量モデル
+  `config.llm.light_model`（既定 `gemma4:e4b`）で実行する。`light_model` を `llama3.2:3b` 等に
+  切り替えるとレイテンシを短縮できるが、日本語の意図分類・情報なし判定の精度が落ちるため
+  既定は `gemma4:e4b`（メインと同一）とする。reasoning・groundedness・`evaluate_final` は既定 `gemma4:e4b` を維持する。
 - 実時間が嵩む主因は**全件再実行の繰り返し**。短縮策: `--limit N`（スモーク）・`--no-web`（⑤ と外部検索 SerpAPI を回避）・
   業界単位の実行・`--cases` で失敗ケースだけの JSONL を渡す。
 - ローカル GPU/CPU のスループットとモデルサイズが実時間を支配するため、実機での計測が必須。
@@ -432,12 +433,12 @@ groundedness 検証・⑤ 再検証・軽量判定 2 種）。1 ケースあた�
 | 1 | `collections` の実検索限定 | プロファイルの対象コレクション（実名 `gov_faq_ollama` 等）で RAG 検索範囲をスコープ制限。フォールバック連鎖にも適用。未登録コレクションのみなら制限なしで従来動作（警告） | ✅ **実装済み**（`config.qdrant.allowed_collections`＋`RAGSearchTool._apply_allowed_collections`・テスト `tests/grace/test_vertical_scope.py`） |
 | 2 | `prompt_addendum` のプロンプト注入 | reasoning プロンプトのシステム指示直後へ業界方針（断定回避・出典必須・本人確認等）を「業務方針（遵守）」として追記 | ✅ **実装済み**（`config.llm.prompt_addendum`＋`ReasoningTool._build_prompt`） |
 | 3 | KPI 評価スクリプト | 分岐一致率・誤エスカレ率・**強制エスカレ誤発火率（0 目標）**・出典付与率・**根拠なし回答率（0 目標）**・アクション適合率・本人確認遵守率を自動計測 | ✅ **実装済み**（`eval/vertical/run.py`・`eval/vertical/metrics.py`・`cases/{gov,saas,ec}.jsonl` 5 カテゴリ） |
-| 4 | 二段判定（キーワード誤爆抑止） | エスカレ語・アクション語の部分一致を候補検出に格下げし、一致時のみ軽量 LLM（`llama3.2:3b`・`config.llm.light_model`）で意図分類（question/request/incident）。question は強制エスカレ・起票を抑止 | ✅ **実装済み**（`_should_force_escalate` / `_decide_action`・単体テスト `tests/test_agent_support_vertical.py`） |
+| 4 | 二段判定（キーワード誤爆抑止） | エスカレ語・アクション語の部分一致を候補検出に格下げし、一致時のみ軽量 LLM（`config.llm.light_model`・既定 `gemma4:e4b`）で意図分類（question/request/incident）。question は強制エスカレ・起票を抑止 | ✅ **実装済み**（`_should_force_escalate` / `_decide_action`・単体テスト `tests/test_agent_support_vertical.py`） |
 | 5 | 「情報なし回答」検知ゲート（④'） | 「見つかりませんでした」型の誠実な回答が出典・支持率を伴い answer で通過する問題（3 業種の out-of-scope で顕在化）への対処。定型句の候補検出＋軽量 LLM の実質回答判定（answered/no_info）の二段判定で、情報なしなら escalate に倒す。判定失敗は安全側（escalate） | ✅ **実装済み**（`_detect_no_info_answer` / `create_no_info_judge`） |
 | 6 | Web 重複実行の排除（⑤） | executor が動的 Web 検索済みなら、⑤ フォールバックは回答再生成（reasoning）と相互検証を省略し、内部回答を本文スニペットで再検証のみ実施（1 ケースあたり十数秒〜短縮）。出典は URL 包含で重複排除（`_merge_citations`） | ✅ **実装済み** |
 | 7 | ④' 判定プロンプトの few-shot 改善 | 「弊社固有の規定は見当たりませんでした」等の断り書きに軽量ジャッジが反応し、実質回答まで no_info と誤判定する over-strict を、判定基準の具体化＋few-shot 判定例で是正 | ✅ **実装済み**（誤 no_info 判定を是正。KPI は Ollama で再計測予定） |
 | 8 | テスト用コレクションの整備 | 合成 Q&A（6 CSV・各 10 件）＋一括登録スクリプト `eval/vertical/register_test_collections.py`。out-of-scope 検証用の「穴」はガードテストで維持 | ✅ **実装済み**（§8） |
-| 9 | ステップ確信度評価の軽量化 | `evaluate_with_factors` を軽量モデル `llama3.2:3b`（`config.llm.light_model`）で実行し、eval のレイテンシを短縮。reasoning・groundedness・evaluate_final は既定 `gemma4:e4b` を維持 | ✅ **実装済み**（§9.3） |
+| 9 | ステップ確信度評価の軽量化 | `evaluate_with_factors` を軽量モデル `config.llm.light_model`（既定 `gemma4:e4b`）で実行。`light_model` を `llama3.2:3b` 等に切り替えれば eval のレイテンシを短縮できるが、既定は意図分類精度を優先し `gemma4:e4b`（メインと同一）。reasoning・groundedness・evaluate_final は既定 `gemma4:e4b` を維持 | ✅ **実装済み**（§9.3） |
 | 10 | out-of-scope × 動的 Web の answer 化対策（escalate_recall 回復） | ①④' 判定基準を精密化: 「質問された事柄そのもの」と「確認方法の案内」を区別し案内のみは no_info、将来予測質問への非確定情報（要望・検討段階）の紹介も no_info。一般知識質問への Web 根拠つき実質回答は answered として保護する few-shot を併記。②出典が Web のみ（社内根拠ゼロ）の answer は候補句がなくても ④' 判定を必須化（`_detect_no_info_answer` の `force_judge`）。追加コストは Web-only 回答 1 件あたり軽量 LLM 1 呼び出し | ✅ **実装済み**（`create_no_info_judge` / `_detect_no_info_answer`。Ollama での escalate_recall 回復は再計測で確認予定） |
 | 11 | ungrounded_answer_rate の計測是正（次工程候補①） | `SupportResult`/`CaseResult` に判定できた主張数 `groundedness_decided` を伝搬し、「判定可能（decided>0）かつ支持率 < confirm_th」のみを根拠なしに計上。判定不能（Q&A 形式ソースで全 neutral）は新指標 `groundedness_neutral_rate` で可視化。根本対策として Groundedness プロンプトに Q&A 形式ソースの扱いを明記 | ✅ **実装済み**（効果は Ollama 再計測で確認） |
 | 12 | web_search のタイムアウト耐性強化（次工程候補②） | タイムアウト→検索0件→情報なし回答→誤エスカレの連鎖（saas「500エラー報告」）を遮断。リトライを設定化（`max_retries`/`retry_backoff_seconds`・対象を Timeout/ConnectionError/5xx に拡大）＋主バックエンド失敗/0件時の `fallback_backend`（既定 duckduckgo・キー不要）を追加 | ✅ **実装済み**（効果は saas 再計測で確認） |
@@ -471,3 +472,4 @@ groundedness 検証・⑤ 再検証・軽量判定 2 種）。1 ケースあた�
 | 1.3 | **#10 実装後の再計測観点を整理**: escalate_recall 回復を狙う 2 つの是正機構（④' 判定基準精密化＝ec 入荷予定日、`force_judge`＋将来予測基準＝gov 税制改正）の動作確認・keyword-trap 維持（誤爆なし）・mean_latency を §9.1 の再計測観点に記録。§10 の #10 を実装済みに更新（KPI 効果確認は Ollama 実機で実施） |
 | 1.4 | **次工程候補①〜④を #11〜#14 としてすべて実装**: ① ungrounded_answer_rate の過大計上是正（`groundedness_decided` 伝搬・判定不能は `groundedness_neutral_rate` へ分離・Groundedness プロンプトの Q&A ソース対応）② web_search 耐性強化（リトライ設定化＋Timeout/5xx 対象拡大＋`fallback_backend`）③ 実運用ナレッジ取得の 1 コマンド化（`fetch_real_knowledge.py`: e-Gov 法令／OSS docs → text CSV）④ 実 ActionTool（Webhook 連携）＋本人確認フロー（台帳照合・未確認は安全側で有人へ。`support_actions.py`）。§10 の残タスク表・次工程候補ブロックを更新。残るライブ作業は実データ登録と 3 業種 KPI 計測（ユーザー環境） |
 | 1.4（ollama 移植） | `anthropic_grace_agent_v2` の v1.4 から本リポジトリへ移植。設計ロジック（7 機構・二段判定・④'・KPI ハーネス）はそのまま、プロバイダ層を Ollama / ローカル LLM へ読み替え（既定 `gemma4:e4b`・軽量 `llama3.2:3b`・Embedding `nomic-embed-text` 768 次元・コレクション `*_ollama`・登録 CLI は `--vertical`〔`--provider` 廃止〕・API キー不要）。§9.3 を「実行コスト（$）」から「実行特性（レイテンシ・スループット）」へ全面改訂（ローカル＝API 料金なし）。§9.1 の計測値は移植元の測定であり本リポジトリの指標を保証しないため転記せず、Ollama 実機での再計測を前提とする「未計測・実機計測予定」に置換（KPI 定義は保持） |
+| 1.5（ollama 実機是正） | **keyword-trap 誤エスカレの是正**: gov 実機計測で「住民税の減免制度の概要を教えて」「行政不服審査制度とはどんな制度ですか？」が意図分類で `request` と誤判定され強制エスカレ誤発火（keyword-trap decision_accuracy=0.0）。原因は軽量モデル `llama3.2:3b`（3B 級）の日本語 question/request 判定の精度不足。対処: ① `config.llm.light_model` 既定を `gemma4:e4b` に統一（意図分類・情報なし判定の精度優先。`llama3.2:3b` 等への切替でレイテンシ短縮は可能だがトレードオフ）② 意図分類プロンプトに「〜を教えて／〜とは／〜の概要」型は語に『減免』『不服』等を含んでも question とする判定基準と few-shot を追記 |
