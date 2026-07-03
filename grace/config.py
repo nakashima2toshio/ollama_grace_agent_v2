@@ -56,6 +56,9 @@ class LLMConfig(BaseModel):
     # 既定は Ollama のローカルLLM。モデルは gemma4:e4b（代替: llama3.2）
     provider: str = "ollama"
     model: str = "gemma4:e4b"
+    # 意図分類・情報なし判定などテレメトリ級の定型評価タスクに使う軽量モデル。
+    # 回答生成・根拠検証は model を使う。ローカル実行のためコストは無い。
+    light_model: str = "llama3.2:3b"
     temperature: float = 0.7
     max_tokens: int = 4096
     timeout: int = 30
