@@ -266,6 +266,12 @@ python -m chunking.csv_text_to_chunks_text_csv \
 | `docs/ollama_logic_port_todo_june13.md` | anthropic からのロジック移植TODO（検証反映版） |
 | `docs/ollama_modernization_todo_june13.md` | CI/lint・テスト移植・ドキュメント刷新のTODO |
 | `readme_usage_tools.md` | チャンク作成・Q&A生成・Qdrant登録の操作手順 |
+| `docs/vertical_port_spec.md` | 業界特化(VerticalProfile)の Ollama 移植仕様書 |
+| `docs/vertical_port_todo.md` | 業界特化の Ollama 移植 TODO（P0〜P4） |
+| `grace/doc/agent_support_verticals.md` | 業界特化 主設計書（7機構・二段判定・KPI） |
+| `grace/doc/agent_support_example.md` | GRACE-Support コア設計（groundedness ゲート） |
+| `docs/vertical_test_data.md` | 業界特化テストデータ準備ガイド |
+| `docs/migration_and_update.md` | GRACE-Support 需要分析・ロードマップ |
 
 ---
 
