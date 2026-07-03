@@ -5,7 +5,7 @@
 投入し、分岐一致率・誤エスカレ率・出典付与率・本人確認遵守率などを自動計測する。
 アクションは常にドライラン（副作用なし）。
 
-前提: Ollama 起動済み（LLM=gemma4:e4b / 軽量=llama3.2:3b、Embedding=nomic-embed-text）・
+前提: Ollama 起動済み（LLM=gemma4:e4b / 軽量=gemma4:e4b、Embedding=nomic-embed-text）・
 Qdrant 起動済み＋対象コレクション（*_ollama）登録済み。ローカル実行のため API キー不要。
 
 使い方::

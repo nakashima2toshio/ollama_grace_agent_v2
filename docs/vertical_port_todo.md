@@ -102,7 +102,7 @@
 
 ## 要確認（着手前に確定）
 
-- [ ] **P4-1: 軽量モデル選定** — 推奨 `LLMConfig.light_model` 新設 ＋ 既定 `llama3.2:3b`（代替: `config.llm.model` 流用）
+- [x] **P4-1: 軽量モデル選定** — `LLMConfig.light_model` 新設。既定は `gemma4:e4b`（実機で `llama3.2:3b` が日本語 question/request を誤判定→keyword-trap 誤エスカレしたため精度優先で確定。`llama3.2:3b` 等への切替でレイテンシ短縮可）
 - [ ] コレクション接尾辞 `*_ollama` で確定（§7）
 - [ ] Embedding 768 / `nomic-embed-text` で確定（登録・検索とも）
 - [ ] `docs/vertical_spec_review.md` を移植対象に含めるか

@@ -331,6 +331,10 @@ python -m eval.vertical.run --vertical gov --report logs/vertical_gov.json
    `light_model` は無いため、(a) モジュール定数 `INTENT_MODEL="llama3.2:3b"` を置く、
    (b) `LLMConfig.light_model` を新設、(c) 既定 `config.llm.model`（`gemma4:e4b`）を流用、のいずれか。
    ローカルはコスト無しのため精度重視で (c) でも可。**推奨は (b) 新設**（anthropic と対応が取りやすい）。
+   → **確定**: (b)＋(c) を採用。`LLMConfig.light_model` を新設し、既定値は `gemma4:e4b`（＝メインと同一）。
+   当初 `llama3.2:3b` を既定にしたが、gov 実機計測で 3B 級が日本語 question/request を誤判定し
+   keyword-trap で強制エスカレ誤発火（decision_accuracy=0.0）したため、精度優先で既定を `gemma4:e4b` に統一。
+   `light_model` を `llama3.2:3b` 等へ設定すればレイテンシは短縮できる（精度とのトレードオフ）。
 
 2. **コレクション接尾辞**（推奨: `*_ollama`）。§7 の命名で確定。CLAUDE.md §9.1 の規約と一致。
 
